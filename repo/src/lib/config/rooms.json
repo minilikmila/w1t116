@@ -1,0 +1,58 @@
+[
+  {
+    "room_id": "room-101",
+    "name": "Lecture Hall A",
+    "building_code": "B1",
+    "floor_code": "F1",
+    "capacity": 50,
+    "equipment": ["projector", "whiteboard", "microphone"]
+  },
+  {
+    "room_id": "room-102",
+    "name": "Lecture Hall B",
+    "building_code": "B1",
+    "floor_code": "F1",
+    "capacity": 40,
+    "equipment": ["projector", "whiteboard"]
+  },
+  {
+    "room_id": "room-201",
+    "name": "Computer Lab 1",
+    "building_code": "B1",
+    "floor_code": "F2",
+    "capacity": 30,
+    "equipment": ["projector", "computers", "whiteboard"]
+  },
+  {
+    "room_id": "room-301",
+    "name": "Science Lab",
+    "building_code": "B2",
+    "floor_code": "F1",
+    "capacity": 25,
+    "equipment": ["lab_kits", "projector", "fume_hood"]
+  },
+  {
+    "room_id": "room-302",
+    "name": "Seminar Room 1",
+    "building_code": "B2",
+    "floor_code": "F1",
+    "capacity": 20,
+    "equipment": ["projector", "whiteboard", "video_conference"]
+  },
+  {
+    "room_id": "room-401",
+    "name": "Workshop Space",
+    "building_code": "B2",
+    "floor_code": "F2",
+    "capacity": 35,
+    "equipment": ["projector", "workbenches", "tool_stations"]
+  },
+  {
+    "room_id": "room-402",
+    "name": "Small Meeting Room",
+    "building_code": "B2",
+    "floor_code": "F2",
+    "capacity": 10,
+    "equipment": ["whiteboard", "video_conference"]
+  }
+]

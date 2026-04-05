@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//private/tmp/**)",
+      "Bash(rm -rf lc-scaffold)",
+      "Bash(npm create:*)",
+      "Bash(cp:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls src/lib/services/*.ts)",
+      "Bash(ls src/lib/stores/*.ts)",
+      "Bash(ls src/lib/utils/*.ts)",
+      "Bash(ls src/lib/components/*.svelte)",
+      "Bash(chmod +x:*)"
+    ]
+  }
+}

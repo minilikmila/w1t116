@@ -1,0 +1,33 @@
+{
+  "housing_fee": 950,
+  "rate_per_unit": 2.0,
+  "booking_window_days": 14,
+  "max_active_reservations": 3,
+  "lockout_duration_minutes": 15,
+  "max_login_attempts": 10,
+  "rate_limit_attempts": 5,
+  "rate_limit_window_seconds": 10,
+  "overdue_days": 10,
+  "dnd_start": "22:00",
+  "dnd_end": "07:00",
+  "pbkdf2_iterations": 310000,
+  "idempotency_ttl_hours": 24,
+  "idempotency_cleanup_interval_hours": 6,
+  "idempotency_abandonment_minutes": 5,
+  "scheduler_poll_interval_seconds": 60,
+  "scheduler_heartbeat_seconds": 5,
+  "scheduler_max_retries": 5,
+  "scheduler_initial_retry_minutes": 1,
+  "scheduler_max_retry_minutes": 30,
+  "dedup_window_seconds": 60,
+  "max_alternatives": 5,
+  "capacity_tolerance": 10,
+  "scoring_weights": {
+    "capacity": 0.4,
+    "equipment": 0.3,
+    "availability": 0.2,
+    "distance": 0.1
+  },
+  "badge_count_cap": 99,
+  "session_check_interval_seconds": 60
+}
