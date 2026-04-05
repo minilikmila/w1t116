@@ -2,11 +2,14 @@
   import { onMount } from 'svelte';
   import { billingService } from '../../lib/services/billingService';
   import { rbacService } from '../../lib/services/rbacService';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate, currentQuery } from '../../lib/utils/router';
   import { get } from 'svelte/store';
-  import type { Bill, PaymentInput } from '../../lib/types';
+  import type { Bill, PaymentInput, User } from '../../lib/types';
 
   let bills = $state<Bill[]>([]);
+  // CONSISTENCY FIX: replaced raw participant_id in bill dropdown with human-readable names
+  let userNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let error = $state('');
   let successMessage = $state('');
@@ -20,7 +23,12 @@
   onMount(async () => {
     try {
       rbacService.checkPermission('payment:record');
-      bills = await billingService.getAllBills();
+      const [loadedBills, users] = await Promise.all([
+        billingService.getAllBills(),
+        idbAccessLayer.getAll<User>('users'),
+      ]);
+      bills = loadedBills;
+      userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
 
       const query = get(currentQuery);
       if (query.billId) {
@@ -88,9 +96,10 @@
         <label for="bill-select">Bill</label>
         <select id="bill-select" bind:value={selectedBillId} required>
           <option value="" disabled>Select a bill</option>
+          <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name, replaced raw bill_id with descriptive label -->
           {#each bills as b (b.bill_id)}
             <option value={b.bill_id}>
-              {b.participant_id} - {b.billing_period} (${b.total.toFixed(2)}) [{b.status}]
+              Bill &mdash; {b.billing_period} | {userNames[b.participant_id] ?? 'Unknown'} (${b.total.toFixed(2)}) [{b.status}]
             </option>
           {/each}
         </select>

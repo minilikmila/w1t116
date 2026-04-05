@@ -96,3 +96,15 @@ export const inboxStore = writable<InboxState>({
 // ============================================================
 
 export const notificationStore = writable<Notification[]>([]);
+
+/**
+ * Add a toast notification. Auto-removes after 4 seconds.
+ */
+export function addNotification(text: string, type: Notification['type'] = 'info'): void {
+  const id = crypto.randomUUID();
+  const notification: Notification = { id, text, type, timestamp: Date.now() };
+  notificationStore.update((list) => [...list, notification]);
+  setTimeout(() => {
+    notificationStore.update((list) => list.filter((n) => n.id !== id));
+  }, 4000);
+}

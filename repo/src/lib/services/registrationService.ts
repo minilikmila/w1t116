@@ -321,7 +321,15 @@ async function swap(
 // ============================================================
 
 async function getRegistration(registrationId: string): Promise<Registration | undefined> {
-  return idbAccessLayer.get<Registration>('registrations', registrationId);
+  const reg = await idbAccessLayer.get<Registration>('registrations', registrationId);
+  if (!reg) return undefined;
+
+  // PARTICIPANT: only own registrations
+  const session = rbacService.getCurrentSession();
+  if (session.role === 'PARTICIPANT' && reg.participant_id !== session.user_id) {
+    return undefined;
+  }
+  return reg;
 }
 
 async function getRegistrationsForSession(sessionId: string): Promise<Registration[]> {
@@ -329,7 +337,41 @@ async function getRegistrationsForSession(sessionId: string): Promise<Registrati
 }
 
 async function getRegistrationsForParticipant(participantId: string): Promise<Registration[]> {
+  // Enforce that PARTICIPANT can only query own registrations
+  const session = rbacService.getCurrentSession();
+  if (session.role === 'PARTICIPANT' && participantId !== session.user_id) {
+    return [];
+  }
   return idbAccessLayer.getAll<Registration>('registrations', 'idx_participant', participantId);
+}
+
+/**
+ * Get all sessions with role-based filtering.
+ * INSTRUCTOR: only own sessions. All other roles: all sessions.
+ */
+async function getAllSessions(): Promise<SessionRecord[]> {
+  const session = rbacService.getCurrentSession();
+  const sessions = await idbAccessLayer.getAll<SessionRecord>('sessions');
+
+  if (session.role === 'INSTRUCTOR') {
+    return sessions.filter((s) => s.instructor_id === session.user_id);
+  }
+  return sessions;
+}
+
+/**
+ * Get a session by ID with role-based filtering.
+ * INSTRUCTOR: can only view own sessions.
+ */
+async function getSession(sessionId: string): Promise<SessionRecord | undefined> {
+  const sessionRecord = await idbAccessLayer.get<SessionRecord>('sessions', sessionId);
+  if (!sessionRecord) return undefined;
+
+  const session = rbacService.getCurrentSession();
+  if (session.role === 'INSTRUCTOR' && sessionRecord.instructor_id !== session.user_id) {
+    return undefined;
+  }
+  return sessionRecord;
 }
 
 // ============================================================
@@ -354,6 +396,8 @@ export const registrationService = {
   getRegistration,
   getRegistrationsForSession,
   getRegistrationsForParticipant,
+  getAllSessions,
+  getSession,
   initCrossTabSync,
 };
 

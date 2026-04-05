@@ -303,15 +303,35 @@ async function cancelBooking(bookingId: string): Promise<void> {
 // ============================================================
 
 async function getBooking(bookingId: string): Promise<Booking | undefined> {
-  return idbAccessLayer.get<Booking>('bookings', bookingId);
+  const booking = await idbAccessLayer.get<Booking>('bookings', bookingId);
+  if (!booking) return undefined;
+
+  // Role-based visibility: INSTRUCTOR can only view own bookings
+  const session = rbacService.getCurrentSession();
+  if (session.role === 'INSTRUCTOR' && booking.user_id !== session.user_id) {
+    return undefined;
+  }
+  // PARTICIPANT should not access bookings
+  if (session.role === 'PARTICIPANT') {
+    return undefined;
+  }
+  return booking;
 }
 
-async function getAllBookings(userId?: string): Promise<Booking[]> {
+async function getAllBookings(): Promise<Booking[]> {
+  const session = rbacService.getCurrentSession();
   const bookings = await idbAccessLayer.getAll<Booking>('bookings');
-  if (userId) {
-    return bookings.filter((b) => b.user_id === userId);
+
+  // SYSTEM_ADMIN, OPS_COORDINATOR: full access
+  if (session.role === 'SYSTEM_ADMIN' || session.role === 'OPS_COORDINATOR') {
+    return bookings;
   }
-  return bookings;
+  // INSTRUCTOR: only own bookings
+  if (session.role === 'INSTRUCTOR') {
+    return bookings.filter((b) => b.user_id === session.user_id);
+  }
+  // PARTICIPANT: no booking access
+  return [];
 }
 
 // ============================================================

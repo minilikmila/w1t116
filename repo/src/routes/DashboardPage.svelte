@@ -3,7 +3,7 @@
   import { authStore } from '../lib/stores';
   import { idbAccessLayer } from '../lib/services/idbAccessLayer';
   import { navigate } from '../lib/utils/router';
-  import type { Booking, SessionRecord, Registration, Bill, Message } from '../lib/types';
+  import type { Booking, SessionRecord, Registration, Bill, Message, Room } from '../lib/types';
 
   let activeBookings = $state(0);
   let activeSessions = $state(0);
@@ -14,6 +14,9 @@
   let recentBookings = $state<Booking[]>([]);
   let upcomingSessions = $state<SessionRecord[]>([]);
   let myRegistrations = $state<Registration[]>([]);
+  // CONSISTENCY FIX: replaced raw IDs with human-readable names
+  let roomNames = $state<Record<string, string>>({});
+  let sessionTitles = $state<Record<string, string>>({});
 
   let loading = $state(true);
 
@@ -26,14 +29,19 @@
       const role = session.role;
 
       // Load data in parallel
-      const [bookings, sessions, registrations, bills, messages, readReceipts] = await Promise.all([
+      const [bookings, sessions, registrations, bills, messages, readReceipts, rooms] = await Promise.all([
         idbAccessLayer.getAll<Booking>('bookings'),
         idbAccessLayer.getAll<SessionRecord>('sessions'),
         idbAccessLayer.getAll<Registration>('registrations'),
         idbAccessLayer.getAll<Bill>('bills'),
         idbAccessLayer.getAll<Message>('messages'),
         idbAccessLayer.getAll<{ receipt_id: string; message_id: string; user_id: string }>('read_receipts'),
+        idbAccessLayer.getAll<Room>('rooms'),
       ]);
+
+      // CONSISTENCY FIX: build lookup maps for human-readable names
+      roomNames = Object.fromEntries(rooms.map((r) => [r.room_id, r.name]));
+      sessionTitles = Object.fromEntries(sessions.map((s) => [s.session_id, s.title]));
 
       // Active bookings: non-cancelled, future or ongoing
       const relevantBookings = bookings.filter((b) =>
@@ -166,9 +174,10 @@
               </tr>
             </thead>
             <tbody>
+              <!-- CONSISTENCY FIX: replaced raw room_id with human-readable name -->
               {#each recentBookings as b (b.booking_id)}
                 <tr class="clickable-row" onclick={() => navigate(`/rooms/${b.booking_id}`)}>
-                  <td>{b.room_id}</td>
+                  <td>{roomNames[b.room_id] ?? 'Unknown'}</td>
                   <td>{formatTime(b.start_time)}</td>
                   <td><span class="badge badge-{b.status}">{b.status}</span></td>
                 </tr>
@@ -214,9 +223,10 @@
               </tr>
             </thead>
             <tbody>
+              <!-- CONSISTENCY FIX: replaced raw session_id with human-readable title -->
               {#each myRegistrations as r (r.registration_id)}
                 <tr class="clickable-row" onclick={() => navigate(`/registration/${r.session_id}`)}>
-                  <td>{r.session_id}</td>
+                  <td>{sessionTitles[r.session_id] ?? 'Unknown'}</td>
                   <td>{formatDate(r.registered_at)}</td>
                   <td><span class="badge badge-active">{r.status}</span></td>
                 </tr>

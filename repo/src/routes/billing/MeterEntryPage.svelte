@@ -3,9 +3,11 @@
   import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { rbacService } from '../../lib/services/rbacService';
   import { navigate } from '../../lib/utils/router';
-  import type { BillingRegistry } from '../../lib/types';
+  import type { BillingRegistry, User } from '../../lib/types';
 
   let registryRecords = $state<BillingRegistry[]>([]);
+  // CONSISTENCY FIX: replaced raw participant_id and entered_by with human-readable names
+  let userNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let error = $state('');
   let successMessage = $state('');
@@ -21,7 +23,12 @@
   onMount(async () => {
     try {
       rbacService.checkRole(['SYSTEM_ADMIN', 'OPS_COORDINATOR']);
-      registryRecords = await idbAccessLayer.getAll<BillingRegistry>('billing_registry');
+      const [records, users] = await Promise.all([
+        idbAccessLayer.getAll<BillingRegistry>('billing_registry'),
+        idbAccessLayer.getAll<User>('users'),
+      ]);
+      registryRecords = records;
+      userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
     } catch (e: any) {
       error = e.message ?? 'Failed to load meter data';
     } finally {
@@ -75,7 +82,7 @@
         registryRecords = [...registryRecords, newRecord];
       }
 
-      successMessage = `Meter reading updated for participant ${selectedParticipantId}.`;
+      successMessage = `Meter reading updated for ${userNames[selectedParticipantId] ?? selectedParticipantId}.`;
       meterReading = 0;
     } catch (e: any) {
       error = e.message ?? 'Failed to save meter reading';
@@ -111,8 +118,9 @@
             <label for="participant-select">Participant</label>
             <select id="participant-select" bind:value={selectedParticipantId} required>
               <option value="" disabled>Select participant</option>
+              <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
               {#each participantIds as pid (pid)}
-                <option value={pid}>{pid}</option>
+                <option value={pid}>{userNames[pid] ?? pid}</option>
               {/each}
             </select>
           </div>
@@ -143,11 +151,12 @@
               </tr>
             </thead>
             <tbody>
+              <!-- CONSISTENCY FIX: replaced raw participant_id and entered_by with human-readable names -->
               {#each registryRecords as record (record.registry_id)}
                 <tr>
-                  <td>{record.participant_id}</td>
+                  <td>{userNames[record.participant_id] ?? 'Unknown'}</td>
                   <td class="reading">{record.meter_reading}</td>
-                  <td>{record.entered_by}</td>
+                  <td>{userNames[record.entered_by] ?? 'Unknown'}</td>
                   <td>{new Date(record.entered_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                 </tr>
               {/each}

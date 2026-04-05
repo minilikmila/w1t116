@@ -210,14 +210,30 @@ async function exportReconciliationCSV(period: string): Promise<Blob> {
 // ============================================================
 
 async function getBill(billId: string): Promise<Bill | undefined> {
-  return idbAccessLayer.get<Bill>('bills', billId);
+  const bill = await idbAccessLayer.get<Bill>('bills', billId);
+  if (!bill) return undefined;
+
+  // Role-based visibility: PARTICIPANT can only view own bills
+  const session = rbacService.getCurrentSession();
+  if (session.role === 'PARTICIPANT' && bill.participant_id !== session.user_id) {
+    return undefined;
+  }
+  return bill;
 }
 
-async function getAllBills(participantId?: string): Promise<Bill[]> {
-  if (participantId) {
-    return idbAccessLayer.getAll<Bill>('bills', 'idx_participant', participantId);
+async function getAllBills(): Promise<Bill[]> {
+  const session = rbacService.getCurrentSession();
+
+  // PARTICIPANT: only own bills
+  if (session.role === 'PARTICIPANT') {
+    return idbAccessLayer.getAll<Bill>('bills', 'idx_participant', session.user_id);
   }
-  return idbAccessLayer.getAll<Bill>('bills');
+  // SYSTEM_ADMIN, OPS_COORDINATOR: full access
+  if (session.role === 'SYSTEM_ADMIN' || session.role === 'OPS_COORDINATOR') {
+    return idbAccessLayer.getAll<Bill>('bills');
+  }
+  // INSTRUCTOR: no bill access
+  return [];
 }
 
 async function getPaymentsForBill(billId: string): Promise<Payment[]> {

@@ -1,16 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roomSchedulingService } from '../../lib/services/roomSchedulingService';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate } from '../../lib/utils/router';
-  import type { Booking } from '../../lib/types';
+  import type { Booking, Room } from '../../lib/types';
 
   let bookings = $state<Booking[]>([]);
+  // CONSISTENCY FIX: replaced raw room_id display with human-readable room names
+  let roomNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let error = $state('');
 
   onMount(async () => {
     try {
-      bookings = await roomSchedulingService.getAllBookings();
+      // Service-level filtering now enforced in getAllBookings
+      const [loadedBookings, rooms] = await Promise.all([
+        roomSchedulingService.getAllBookings(),
+        idbAccessLayer.getAll<Room>('rooms'),
+      ]);
+      bookings = loadedBookings;
+      roomNames = Object.fromEntries(rooms.map((r) => [r.room_id, r.name]));
     } catch (e: any) {
       error = e.message ?? 'Failed to load bookings';
     } finally {
@@ -74,7 +83,7 @@
             tabindex="0"
             onkeydown={(e) => { if (e.key === 'Enter') handleRowClick(booking.booking_id); }}
           >
-            <td>{booking.room_id}</td>
+            <td>{roomNames[booking.room_id] ?? 'Unknown'}</td>
             <td>{formatDate(booking.start_time)}</td>
             <td>{formatTime(booking.start_time)} &ndash; {formatTime(booking.end_time)}</td>
             <td>

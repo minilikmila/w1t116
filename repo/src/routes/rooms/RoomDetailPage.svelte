@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { roomSchedulingService } from '../../lib/services/roomSchedulingService';
+  import { rbacService } from '../../lib/services/rbacService';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate } from '../../lib/utils/router';
-  import type { Booking } from '../../lib/types';
+  import { addNotification } from '../../lib/stores';
+  import type { Booking, Room, User } from '../../lib/types';
 
   let { params } = $props<{ params: { id: string } }>();
 
@@ -11,10 +14,36 @@
   let error = $state('');
   let cancelling = $state(false);
   let cancelSuccess = $state(false);
+  // CONSISTENCY FIX: replaced raw IDs with human-readable names
+  let roomName = $state('Unknown');
+  let userName = $state('Unknown');
+  // CONSISTENCY FIX: permission-based cancel button visibility
+  let canCancel = $state(false);
 
   onMount(async () => {
     try {
-      booking = await roomSchedulingService.getBooking(params.id);
+      const loadedBooking = await roomSchedulingService.getBooking(params.id);
+      // Detail view protection: redirect if not permitted
+      if (!loadedBooking) {
+        addNotification('You do not have permission to view this resource', 'error');
+        navigate('/rooms');
+        return;
+      }
+      booking = loadedBooking;
+
+      const session = rbacService.getCurrentSession();
+      // Cancel button: SYSTEM_ADMIN, OPS_COORDINATOR, or INSTRUCTOR who owns
+      canCancel = session.role === 'SYSTEM_ADMIN' ||
+        session.role === 'OPS_COORDINATOR' ||
+        (session.role === 'INSTRUCTOR' && booking.user_id === session.user_id);
+
+      // Resolve human-readable names
+      const [room, user] = await Promise.all([
+        idbAccessLayer.get<Room>('rooms', booking.room_id),
+        idbAccessLayer.get<User>('users', booking.user_id),
+      ]);
+      roomName = room?.name ?? 'Unknown';
+      userName = user ? `${user.username}` : 'Unknown';
     } catch (e: any) {
       error = e.message ?? 'Failed to load booking';
     } finally {
@@ -94,14 +123,15 @@
         <div class="alert alert-error">{error}</div>
       {/if}
 
+      <!-- CONSISTENCY FIX: replaced raw booking_id, room_id, user_id with human-readable values -->
       <div class="detail-grid">
         <div class="detail-item">
-          <span class="detail-label">Booking ID</span>
-          <span class="detail-value">{booking.booking_id}</span>
+          <span class="detail-label">Booking</span>
+          <span class="detail-value">Booking &mdash; {roomName} on {formatDate(booking.start_time)}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">Room</span>
-          <span class="detail-value">{booking.room_id}</span>
+          <span class="detail-value">{roomName}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">Date</span>
@@ -130,12 +160,13 @@
           <span class="detail-value">{formatDateTime(booking.created_at)}</span>
         </div>
         <div class="detail-item">
-          <span class="detail-label">User</span>
-          <span class="detail-value">{booking.user_id}</span>
+          <span class="detail-label">Booked By</span>
+          <span class="detail-value">{userName}</span>
         </div>
       </div>
 
-      {#if booking.status !== 'cancelled'}
+      <!-- CONSISTENCY FIX: cancel button hidden unless SYSTEM_ADMIN, OPS_COORDINATOR, or owning INSTRUCTOR -->
+      {#if booking.status !== 'cancelled' && canCancel}
         <div class="detail-actions">
           <button
             class="btn-danger"

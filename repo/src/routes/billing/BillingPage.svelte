@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { billingService } from '../../lib/services/billingService';
-  import { rbacService } from '../../lib/services/rbacService';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate } from '../../lib/utils/router';
-  import type { Bill } from '../../lib/types';
+  import type { Bill, User } from '../../lib/types';
 
   let bills = $state<Bill[]>([]);
+  // CONSISTENCY FIX: replaced raw participant_id with human-readable names
+  let userNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let error = $state('');
 
@@ -22,14 +24,15 @@
     })
   );
 
+  // CONSISTENCY FIX: moved participant filtering from UI to billingService.getAllBills
   onMount(async () => {
     try {
-      const session = rbacService.getCurrentSession();
-      if (session.role === 'PARTICIPANT') {
-        bills = await billingService.getAllBills(session.user_id);
-      } else {
-        bills = await billingService.getAllBills();
-      }
+      const [loadedBills, users] = await Promise.all([
+        billingService.getAllBills(),
+        idbAccessLayer.getAll<User>('users'),
+      ]);
+      bills = loadedBills;
+      userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
     } catch (e: any) {
       error = e.message ?? 'Failed to load bills';
     } finally {
@@ -134,7 +137,8 @@
             tabindex="0"
             onkeydown={(e) => { if (e.key === 'Enter') handleRowClick(bill.bill_id); }}
           >
-            <td>{bill.participant_id}</td>
+            <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
+            <td>{userNames[bill.participant_id] ?? 'Unknown'}</td>
             <td>{bill.billing_period}</td>
             <td>{formatCurrency(bill.housing_fee)}</td>
             <td>{formatCurrency(bill.utility_charge)}</td>

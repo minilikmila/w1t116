@@ -14,8 +14,12 @@
   let actionSuccess = $state('');
   let analytics = $state<{ uniqueOpens: number; timeToFirstRead: number | null } | null>(null);
   let canManage = $state(false);
+  // CONSISTENCY FIX: retract button visible only if owner or privileged role
+  let canRetract = $state(false);
   let retractLoading = $state(false);
   let pinLoading = $state(false);
+  // CONSISTENCY FIX: replaced raw author_id with human-readable name
+  let authorName = $state('Unknown');
 
   onMount(async () => {
     try {
@@ -37,6 +41,14 @@
         return;
       }
       message = msg;
+
+      // CONSISTENCY FIX: retract only if privileged role or author
+      canRetract = canManage || msg.author_id === session.user_id;
+
+      // Resolve author name
+      const { idbAccessLayer } = await import('../../lib/services/idbAccessLayer');
+      const author = await idbAccessLayer.get<{ user_id: string; username: string }>('users', msg.author_id);
+      authorName = author?.username ?? 'Unknown';
 
       // Record read receipt
       await messageCenterService.recordReadReceipt(id, session.user_id);
@@ -166,9 +178,10 @@
       </div>
 
       <div class="message-meta">
+        <!-- CONSISTENCY FIX: replaced raw author_id with human-readable name -->
         <div class="meta-item">
           <span class="meta-label">Author</span>
-          <span class="meta-value">{message.author_id}</span>
+          <span class="meta-value">{authorName}</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">Published</span>
@@ -190,22 +203,25 @@
         {/if}
       </div>
 
-      {#if canManage}
+      <!-- CONSISTENCY FIX: action buttons visible only if owner or privileged role -->
+      {#if canManage || canRetract}
         <div class="admin-section">
           <h4>Actions</h4>
           <div class="admin-actions">
-            {#if message.status !== 'retracted'}
+            {#if message.status !== 'retracted' && canRetract}
               <button
                 class="btn btn-danger"
                 onclick={handleRetract}
                 disabled={retractLoading}
               >{retractLoading ? 'Retracting...' : 'Retract'}</button>
             {/if}
-            <button
-              class="btn btn-secondary"
-              onclick={handleTogglePin}
-              disabled={pinLoading}
-            >{pinLoading ? '...' : message.pinned ? 'Unpin' : 'Pin'}</button>
+            {#if canManage}
+              <button
+                class="btn btn-secondary"
+                onclick={handleTogglePin}
+                disabled={pinLoading}
+              >{pinLoading ? '...' : message.pinned ? 'Unpin' : 'Pin'}</button>
+            {/if}
           </div>
         </div>
 

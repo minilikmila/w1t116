@@ -17,7 +17,12 @@
       "Bash(grep:*)",
       "Bash(npx vite:*)",
       "Bash(npx svelte-check:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(wc -l /Users/minilik/projects/eaglepoint/w1t116/repo/src/lib/services/*.ts)",
+      "Bash(npx -p typescript tsc --version)",
+      "Bash(node:*)",
+      "Read(//Users/minilik/.nvm/versions/node/**)",
+      "Bash(nvm ls:*)"
     ]
   }
 }

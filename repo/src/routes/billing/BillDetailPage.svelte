@@ -3,15 +3,19 @@
   import { currentParams } from '../../lib/utils/router';
   import { billingService } from '../../lib/services/billingService';
   import { rbacService } from '../../lib/services/rbacService';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate } from '../../lib/utils/router';
+  import { addNotification } from '../../lib/stores';
   import { get } from 'svelte/store';
-  import type { Bill, Payment } from '../../lib/types';
+  import type { Bill, Payment, User } from '../../lib/types';
 
   let bill = $state<Bill | null>(null);
   let payments = $state<Payment[]>([]);
   let loading = $state(true);
   let error = $state('');
   let canRecordPayment = $state(false);
+  // CONSISTENCY FIX: replaced raw participant_id with human-readable name
+  let participantName = $state('Unknown');
 
   let billId = $derived(get(currentParams).billId ?? '');
 
@@ -28,14 +32,20 @@
       const session = rbacService.getCurrentSession();
       canRecordPayment = session.role === 'SYSTEM_ADMIN' || session.role === 'OPS_COORDINATOR';
 
+      // Service-level filtering now enforced in getBill
       const loadedBill = await billingService.getBill(id);
+      // Detail view protection: redirect if not permitted
       if (!loadedBill) {
-        error = 'Bill not found.';
-        loading = false;
+        addNotification('You do not have permission to view this resource', 'error');
+        navigate('/billing');
         return;
       }
       bill = loadedBill;
       payments = await billingService.getPaymentsForBill(id);
+
+      // Resolve participant name
+      const user = await idbAccessLayer.get<User>('users', bill.participant_id);
+      participantName = user?.username ?? 'Unknown';
     } catch (e: any) {
       error = e.message ?? 'Failed to load bill details';
     } finally {
@@ -83,9 +93,10 @@
       <h3>Line Items</h3>
       <table class="line-items-table">
         <tbody>
+          <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
           <tr>
             <td class="label">Participant</td>
-            <td>{bill.participant_id}</td>
+            <td>{participantName}</td>
           </tr>
           <tr>
             <td class="label">Billing Period</td>

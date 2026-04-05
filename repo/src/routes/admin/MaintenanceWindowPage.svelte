@@ -1,6 +1,11 @@
 <script lang="ts">
   import { opsConfigService } from '../../lib/services/opsConfigService';
-  import type { MaintenanceWindow, MaintenanceWindowInput, BlacklistRule } from '../../lib/types';
+  import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
+  import type { MaintenanceWindow, MaintenanceWindowInput, BlacklistRule, Room, User } from '../../lib/types';
+
+  // CONSISTENCY FIX: replaced raw room_id, target_id, created_by with human-readable names
+  let roomNames = $state<Record<string, string>>({});
+  let userNames = $state<Record<string, string>>({});
 
   // --- Maintenance Windows ---
   let windows: MaintenanceWindow[] = $state([]);
@@ -130,6 +135,15 @@
   }
 
   // --- Init ---
+  async function initLookups() {
+    const [rooms, users] = await Promise.all([
+      idbAccessLayer.getAll<Room>('rooms'),
+      idbAccessLayer.getAll<User>('users'),
+    ]);
+    roomNames = Object.fromEntries(rooms.map((r) => [r.room_id, r.name]));
+    userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
+  }
+  initLookups();
   loadWindows();
   loadRules();
 </script>
@@ -192,9 +206,10 @@
             </tr>
           </thead>
           <tbody>
+            <!-- CONSISTENCY FIX: replaced raw room_id with human-readable name -->
             {#each windows as win (win.window_id)}
               <tr>
-                <td>{win.room_id}</td>
+                <td>{roomNames[win.room_id] ?? win.room_id}</td>
                 <td>{formatTimestamp(win.start_time)}</td>
                 <td>{formatTimestamp(win.end_time)}</td>
                 <td>{win.description}</td>
@@ -263,9 +278,10 @@
             {#each rules as rule (rule.rule_id)}
               <tr>
                 <td><span class="type-badge">{rule.target_type}</span></td>
-                <td>{rule.target_id}</td>
+                <!-- CONSISTENCY FIX: replaced raw target_id and created_by with human-readable names -->
+                <td>{rule.target_type === 'room' ? (roomNames[rule.target_id] ?? rule.target_id) : (userNames[rule.target_id] ?? rule.target_id)}</td>
                 <td>{rule.reason}</td>
-                <td>{rule.created_by}</td>
+                <td>{userNames[rule.created_by] ?? 'Unknown'}</td>
                 <td>{formatTimestamp(rule.created_at)}</td>
                 <td>
                   <button class="btn-danger" onclick={() => deleteRule(rule.rule_id)}>Delete</button>

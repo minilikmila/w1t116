@@ -305,7 +305,8 @@ describe('roomSchedulingService', () => {
   // ----------------------------------------------------------
 
   describe('getAllBookings', () => {
-    it('returns all bookings when no userId filter', async () => {
+    it('returns all bookings for SYSTEM_ADMIN', async () => {
+      loginAs('SYSTEM_ADMIN');
       mockIdb._seed('bookings', [
         { booking_id: 'b1', user_id: 'u1', room_id: 'r1', status: 'confirmed', requested_equipment: [], _version: 1 },
         { booking_id: 'b2', user_id: 'u2', room_id: 'r2', status: 'confirmed', requested_equipment: [], _version: 1 },
@@ -315,15 +316,16 @@ describe('roomSchedulingService', () => {
       expect(all).toHaveLength(2);
     });
 
-    it('filters by userId when provided', async () => {
+    it('filters to own bookings for INSTRUCTOR', async () => {
+      const session = loginAs('INSTRUCTOR');
       mockIdb._seed('bookings', [
-        { booking_id: 'b1', user_id: 'u1', room_id: 'r1', status: 'confirmed', requested_equipment: [], _version: 1 },
-        { booking_id: 'b2', user_id: 'u2', room_id: 'r2', status: 'confirmed', requested_equipment: [], _version: 1 },
+        { booking_id: 'b1', user_id: session.user_id, room_id: 'r1', status: 'confirmed', requested_equipment: [], _version: 1 },
+        { booking_id: 'b2', user_id: 'other-user', room_id: 'r2', status: 'confirmed', requested_equipment: [], _version: 1 },
       ]);
 
-      const filtered = await roomSchedulingService.getAllBookings('u1');
+      const filtered = await roomSchedulingService.getAllBookings();
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].user_id).toBe('u1');
+      expect(filtered[0].user_id).toBe(session.user_id);
     });
   });
 });

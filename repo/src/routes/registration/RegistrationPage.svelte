@@ -21,14 +21,22 @@
     )
   );
 
+  // CONSISTENCY FIX: use service-level session filtering (INSTRUCTOR sees own only)
   onMount(async () => {
     try {
       const currentSession = rbacService.getCurrentSession();
       isParticipant = currentSession.role === 'PARTICIPANT';
       isInstructor = currentSession.role === 'INSTRUCTOR';
 
+      // For PARTICIPANT: show all sessions (need to see available sessions to register).
+      // For INSTRUCTOR: service filters to own sessions.
+      // For ADMIN/OPS: show all.
+      const sessionLoader = isParticipant
+        ? idbAccessLayer.getAll<SessionRecord>('sessions')
+        : registrationService.getAllSessions();
+
       const [allSessions, registrations] = await Promise.all([
-        idbAccessLayer.getAll<SessionRecord>('sessions'),
+        sessionLoader,
         isParticipant
           ? registrationService.getRegistrationsForParticipant(currentSession.user_id)
           : Promise.resolve([]),

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { authStore, uiStore } from '../stores';
+  import { authStore, uiStore, notificationStore } from '../stores';
   import { navigate, currentPath } from '../utils/router';
   import type { Role } from '../types';
 
@@ -121,6 +121,17 @@
   </div>
 {:else}
   {@render children()}
+{/if}
+
+<!-- Toast notifications -->
+{#if $notificationStore.length > 0}
+  <div class="toast-container">
+    {#each $notificationStore as notification (notification.id)}
+      <div class="toast toast-{notification.type}">
+        {notification.text}
+      </div>
+    {/each}
+  </div>
 {/if}
 
 <style>
@@ -266,6 +277,55 @@
     padding: 1.5rem;
     overflow-y: auto;
     background: #ffffff;
+  }
+
+  .toast-container {
+    position: fixed;
+    top: 56px;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 400px;
+  }
+
+  .toast {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.3s ease;
+  }
+
+  .toast-error {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+  }
+
+  .toast-success {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+  }
+
+  .toast-warning {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+  }
+
+  .toast-info {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
   }
 
   @media (max-width: 768px) {

@@ -4,7 +4,9 @@
   import { rbacService } from '../../lib/services/rbacService';
   import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import RetryDrawer from '../../lib/components/RetryDrawer.svelte';
-  import type { SessionRecord, Registration } from '../../lib/types';
+  import { navigate } from '../../lib/utils/router';
+  import { addNotification } from '../../lib/stores';
+  import type { SessionRecord, Registration, User } from '../../lib/types';
   import { RateLimitError } from '../../lib/types';
 
   let { params }: { params: { sessionId: string } } = $props();
@@ -18,6 +20,18 @@
   let isParticipant = $state(false);
   let currentUserId = $state('');
   let actionInProgress = $state(false);
+  // CONSISTENCY FIX: replaced raw instructor_id with human-readable name
+  let instructorName = $state('Unknown');
+  // CONSISTENCY FIX: edit button visibility based on role + ownership
+  let canEdit = $state(false);
+  // Edit mode state
+  let editMode = $state(false);
+  let editTitle = $state('');
+  let editCapacity = $state(0);
+  let editDateValue = $state('');
+  let editStartTime = $state('');
+  let editEndTime = $state('');
+  let editSubmitting = $state(false);
 
   // Swap state
   let showSwapSelector = $state(false);
@@ -52,21 +66,43 @@
       currentUserId = currentSession.user_id;
       isParticipant = currentSession.role === 'PARTICIPANT';
 
-      const [sessionData, sessions, registrations] = await Promise.all([
-        idbAccessLayer.get<SessionRecord>('sessions', params.sessionId),
+      // Use service-level filtered session query for INSTRUCTOR
+      const sessionData = currentSession.role === 'INSTRUCTOR'
+        ? await registrationService.getSession(params.sessionId)
+        : await idbAccessLayer.get<SessionRecord>('sessions', params.sessionId);
+
+      // Detail view protection for INSTRUCTOR viewing non-owned session
+      if (!sessionData && currentSession.role === 'INSTRUCTOR') {
+        addNotification('You do not have permission to view this resource', 'error');
+        navigate('/registration');
+        return;
+      }
+
+      session = sessionData ?? null;
+
+      if (!session) {
+        error = 'Session not found.';
+        loading = false;
+        return;
+      }
+
+      // Determine edit permission
+      canEdit = currentSession.role === 'SYSTEM_ADMIN' ||
+        currentSession.role === 'OPS_COORDINATOR' ||
+        (currentSession.role === 'INSTRUCTOR' && session.instructor_id === currentSession.user_id);
+
+      // Fetch all sessions for swap and registrations
+      const [sessions, registrations, instructor] = await Promise.all([
         idbAccessLayer.getAll<SessionRecord>('sessions'),
         isParticipant
           ? registrationService.getRegistrationsForParticipant(currentSession.user_id)
           : Promise.resolve([]),
+        idbAccessLayer.get<User>('users', session.instructor_id),
       ]);
 
-      session = sessionData ?? null;
       allSessions = sessions;
       myRegistrations = registrations;
-
-      if (!session) {
-        error = 'Session not found.';
-      }
+      instructorName = instructor?.username ?? 'Unknown';
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : 'Failed to load session details.';
     } finally {
@@ -165,9 +201,43 @@
   function formatTime(timestamp: number): string {
     return new Date(timestamp).toLocaleString();
   }
+
+  async function handleEditSubmit(): Promise<void> {
+    if (!session) return;
+    error = null;
+    successMessage = null;
+    editSubmitting = true;
+    try {
+      const startTs = new Date(`${editDateValue}T${editStartTime}`).getTime();
+      const endTs = new Date(`${editDateValue}T${editEndTime}`).getTime();
+      if (endTs <= startTs) {
+        error = 'End time must be after start time.';
+        editSubmitting = false;
+        return;
+      }
+      const updated = {
+        ...session,
+        title: editTitle.trim(),
+        start_time: startTs,
+        end_time: endTs,
+        capacity: editCapacity,
+      };
+      const { version } = await idbAccessLayer.put('sessions', updated);
+      session = { ...updated, _version: version };
+      editMode = false;
+      successMessage = 'Session updated successfully.';
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : 'Failed to update session.';
+    } finally {
+      editSubmitting = false;
+    }
+  }
 </script>
 
 <div class="page">
+  <!-- CONSISTENCY FIX: added back navigation to registration list for all roles -->
+  <button class="btn-back" onclick={() => navigate('/registration')}>&larr; Back to Registration</button>
+
   <h2>Session Details</h2>
 
   {#if loading}
@@ -175,6 +245,7 @@
   {:else if !session && error}
     <p class="error-text">{error}</p>
   {:else if session}
+    {#if !editMode}
     <div class="session-details">
       <div class="detail-row">
         <span class="detail-label">Title:</span>
@@ -182,7 +253,8 @@
       </div>
       <div class="detail-row">
         <span class="detail-label">Instructor:</span>
-        <span class="detail-value">{session.instructor_id}</span>
+        <!-- CONSISTENCY FIX: replaced raw instructor_id with human-readable name -->
+        <span class="detail-value">{instructorName}</span>
       </div>
       <div class="detail-row">
         <span class="detail-label">Time:</span>
@@ -259,6 +331,63 @@
           {/if}
         {/if}
       </div>
+    {/if}
+
+    <!-- CONSISTENCY FIX: edit button visible only if owner or privileged role -->
+    {#if canEdit}
+      <div class="actions" style="margin-top: 1rem;">
+        <button
+          class="action-button edit-button"
+          onclick={() => {
+            editMode = true;
+            editTitle = session?.title ?? '';
+            editCapacity = session?.capacity ?? 0;
+            const d = new Date(session?.start_time ?? 0);
+            editDateValue = d.toISOString().slice(0, 10);
+            editStartTime = d.toTimeString().slice(0, 5);
+            const e = new Date(session?.end_time ?? 0);
+            editEndTime = e.toTimeString().slice(0, 5);
+          }}
+        >
+          Edit Session
+        </button>
+      </div>
+    {/if}
+    {:else}
+    <!-- Edit mode: reuse session creation form layout -->
+    <div class="session-details">
+      <h3>Edit Session</h3>
+      <form class="edit-form" onsubmit={(e) => { e.preventDefault(); handleEditSubmit(); }}>
+        <div class="form-group">
+          <label for="edit-title">Title</label>
+          <input id="edit-title" type="text" bind:value={editTitle} required />
+        </div>
+        <div class="form-group">
+          <label for="edit-date">Date</label>
+          <input id="edit-date" type="date" bind:value={editDateValue} required />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="edit-start">Start Time</label>
+            <input id="edit-start" type="time" bind:value={editStartTime} required />
+          </div>
+          <div class="form-group">
+            <label for="edit-end">End Time</label>
+            <input id="edit-end" type="time" bind:value={editEndTime} required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="edit-capacity">Capacity</label>
+          <input id="edit-capacity" type="number" bind:value={editCapacity} min="1" required />
+        </div>
+        <div class="edit-actions">
+          <button type="button" class="action-button cancel-edit-button" onclick={() => { editMode = false; }}>Cancel</button>
+          <button type="submit" class="action-button save-edit-button" disabled={editSubmitting}>
+            {editSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </div>
     {/if}
   {/if}
 </div>
@@ -411,5 +540,90 @@
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 0.9rem;
+  }
+
+  .btn-back {
+    background: none;
+    border: none;
+    color: #4361ee;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    margin-bottom: 1rem;
+    display: inline-block;
+  }
+
+  .btn-back:hover {
+    text-decoration: underline;
+  }
+
+  .edit-button {
+    background: #4361ee;
+  }
+
+  .edit-button:hover:not(:disabled) {
+    background: #3a56d4;
+  }
+
+  .edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .edit-form h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .form-group label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #555;
+  }
+
+  .form-group input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .form-row .form-group {
+    flex: 1;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .cancel-edit-button {
+    background: #e9ecef;
+    color: #333;
+  }
+
+  .cancel-edit-button:hover {
+    background: #dee2e6;
+  }
+
+  .save-edit-button {
+    background: #28a745;
+  }
+
+  .save-edit-button:hover:not(:disabled) {
+    background: #218838;
   }
 </style>

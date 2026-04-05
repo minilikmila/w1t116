@@ -2,12 +2,14 @@
   import { onMount } from 'svelte';
   import { idbAccessLayer } from '../services/idbAccessLayer';
   import { rbacService } from '../services/rbacService';
-  import type { Attendance, Registration } from '../types';
+  import type { Attendance, Registration, User } from '../types';
 
   let { sessionId }: { sessionId: string } = $props();
 
   let registrations = $state<Registration[]>([]);
   let attendanceRecords = $state<Map<string, Attendance>>(new Map());
+  // CONSISTENCY FIX: replaced raw participant_id with human-readable names
+  let userNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let saving = $state(false);
   let message = $state('');
@@ -18,10 +20,14 @@
   onMount(async () => {
     if (!canTrack) return;
     try {
-      const regs = await idbAccessLayer.getAll<Registration>('registrations', 'idx_session', sessionId);
+      const [regs, allAttendance, users] = await Promise.all([
+        idbAccessLayer.getAll<Registration>('registrations', 'idx_session', sessionId),
+        idbAccessLayer.getAll<Attendance>('attendance', 'idx_session', sessionId),
+        idbAccessLayer.getAll<User>('users'),
+      ]);
       registrations = regs.filter((r) => r.status === 'active');
+      userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
 
-      const allAttendance = await idbAccessLayer.getAll<Attendance>('attendance', 'idx_session', sessionId);
       const map = new Map<string, Attendance>();
       for (const a of allAttendance) {
         map.set(a.participant_id, a);
@@ -86,9 +92,10 @@
           </tr>
         </thead>
         <tbody>
+          <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
           {#each registrations as reg}
             <tr>
-              <td>{reg.participant_id}</td>
+              <td>{userNames[reg.participant_id] ?? 'Unknown'}</td>
               <td>
                 <span class="status-badge" class:present={getStatus(reg.participant_id) === 'present'}
                   class:absent={getStatus(reg.participant_id) === 'absent'}
