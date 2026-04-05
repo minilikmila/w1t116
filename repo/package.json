@@ -7,16 +7,26 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run unit_tests/",
+    "test:api": "vitest run API_tests/",
+    "test:all": "bash run_tests.sh"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.12.0",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^29.0.1",
     "svelte": "^5.53.12",
     "svelte-check": "^4.4.5",
     "typescript": "~5.9.3",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "vitest": "^4.1.2"
   },
   "dependencies": {
     "svelte-spa-router": "^5.0.1"

@@ -1,0 +1,52 @@
+[
+  {
+    "session_id": "session-001",
+    "instructor_id": "seed-admin",
+    "room_id": "room-101",
+    "booking_id": "booking-seed-001",
+    "title": "Introduction to Software Engineering",
+    "capacity": 50,
+    "current_enrollment": 0,
+    "status": "active"
+  },
+  {
+    "session_id": "session-002",
+    "instructor_id": "seed-admin",
+    "room_id": "room-201",
+    "booking_id": "booking-seed-002",
+    "title": "Database Fundamentals Lab",
+    "capacity": 30,
+    "current_enrollment": 0,
+    "status": "active"
+  },
+  {
+    "session_id": "session-003",
+    "instructor_id": "seed-admin",
+    "room_id": "room-302",
+    "booking_id": "booking-seed-003",
+    "title": "Project Management Seminar",
+    "capacity": 20,
+    "current_enrollment": 0,
+    "status": "active"
+  },
+  {
+    "session_id": "session-004",
+    "instructor_id": "seed-admin",
+    "room_id": "room-301",
+    "booking_id": "booking-seed-004",
+    "title": "Chemistry Lab: Module 1",
+    "capacity": 25,
+    "current_enrollment": 0,
+    "status": "active"
+  },
+  {
+    "session_id": "session-005",
+    "instructor_id": "seed-admin",
+    "room_id": "room-401",
+    "booking_id": "booking-seed-005",
+    "title": "Hands-on Electronics Workshop",
+    "capacity": 35,
+    "current_enrollment": 0,
+    "status": "active"
+  }
+]

@@ -303,6 +303,26 @@ async function maybeDecrypt(record: Record<string, unknown>, userId?: string): P
   return (await decryptHook(record, userId)) as Record<string, unknown>;
 }
 
+/**
+ * Recursively convert a value to a plain JS object/array, stripping Svelte 5
+ * reactive proxies so the result is safe for IndexedDB's structured-clone.
+ * ArrayBuffer and TypedArray values are preserved as-is.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toPlain(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return new Date(obj.getTime());
+  if (obj instanceof ArrayBuffer) return obj;
+  if (ArrayBuffer.isView(obj)) return obj;
+  if (Array.isArray(obj)) return obj.map(toPlain);
+  const plain: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) {
+    plain[key] = toPlain(obj[key]);
+  }
+  return plain;
+}
+
 function broadcastChange(type: 'record-updated' | 'record-deleted', store: string, recordId: string, version?: number, userId?: string): void {
   if (!dataSyncChannel) return;
   const message: DataSyncMessage = { type, store, record_id: recordId, version, user_id: userId };
@@ -386,6 +406,9 @@ async function getAll<T = Record<string, unknown>>(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function put(store: string, record: any, userId?: string): Promise<{ version: number }> {
+  // Strip Svelte 5 reactive proxies so IndexedDB can serialize the record.
+  record = toPlain(record);
+
   const database = getDb();
   const storeDef = STORE_DEFINITIONS[store];
   if (!storeDef) throw new Error(`Unknown store: ${store}`);
@@ -552,7 +575,7 @@ async function transaction<T>(
       put(storeName: string, record: Record<string, unknown>): Promise<void> {
         return new Promise((res, rej) => {
           const store = tx.objectStore(storeName);
-          const request = store.put(record);
+          const request = store.put(toPlain(record));
           request.onsuccess = () => res();
           request.onerror = () => rej(request.error);
         });

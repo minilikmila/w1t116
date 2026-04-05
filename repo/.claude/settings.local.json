@@ -12,7 +12,12 @@
       "Bash(ls src/lib/stores/*.ts)",
       "Bash(ls src/lib/utils/*.ts)",
       "Bash(ls src/lib/components/*.svelte)",
-      "Bash(chmod +x:*)"
+      "Bash(chmod +x:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx svelte-check:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

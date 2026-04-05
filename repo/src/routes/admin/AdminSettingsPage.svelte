@@ -1,10 +1,10 @@
 <script lang="ts">
   const adminLinks = [
-    { href: '/admin/policies', title: 'Policy Configuration', description: 'Manage housing fees, booking windows, rate limits, and other system policies.' },
-    { href: '/admin/feature-flags', title: 'Feature Flags', description: 'Toggle features on or off, target specific roles and org units.' },
-    { href: '/admin/users', title: 'User Management', description: 'View all users, create new accounts, and assign roles.' },
-    { href: '/admin/maintenance', title: 'Maintenance & Blacklist', description: 'Schedule maintenance windows and manage blacklist rules.' },
-    { href: '/admin/export-import', title: 'Export / Import', description: 'Bulk export or import system data for backup and migration.' },
+    { href: '#/admin/policies', title: 'Policy Configuration', description: 'Manage housing fees, booking windows, rate limits, and other system policies.' },
+    { href: '#/admin/flags', title: 'Feature Flags', description: 'Toggle features on or off, target specific roles and org units.' },
+    { href: '#/admin/users', title: 'User Management', description: 'View all users, create new accounts, and assign roles.' },
+    { href: '#/admin/maintenance', title: 'Maintenance & Blacklist', description: 'Schedule maintenance windows and manage blacklist rules.' },
+    { href: '#/admin/export-import', title: 'Export / Import', description: 'Bulk export or import system data for backup and migration.' },
   ];
 </script>
 

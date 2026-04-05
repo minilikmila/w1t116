@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte';
   import { onMount, onDestroy } from 'svelte';
   import { authStore } from '../stores';
-  import { currentPath, navigate, getRouteRoles, resolveCurrentRoute } from '../utils/router';
+  import { currentPath, navigate, getRouteRoles } from '../utils/router';
   import type { Role } from '../types';
 
   let { children }: { children: Snippet } = $props();
@@ -60,7 +60,6 @@
     // Check access on every path change
     unsubPath = currentPath.subscribe((path) => {
       checkAccess(path);
-      resolveCurrentRoute();
     });
 
     // Periodic session validity check every 60 seconds

@@ -35,6 +35,11 @@ export const routeDefinitions: RouteDefinition[] = [
     roles: allRoles,
   },
   {
+    path: '/registration/new',
+    component: () => import('../../routes/registration/SessionCreatePage.svelte'),
+    roles: ['INSTRUCTOR'],
+  },
+  {
     path: '/registration/:sessionId',
     component: () => import('../../routes/registration/SessionRegistrationDetail.svelte'),
     roles: allRoles,

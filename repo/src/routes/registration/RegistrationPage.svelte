@@ -11,6 +11,7 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let isParticipant = $state(false);
+  let isInstructor = $state(false);
 
   let registeredSessionIds = $derived(
     new Set(
@@ -24,6 +25,7 @@
     try {
       const currentSession = rbacService.getCurrentSession();
       isParticipant = currentSession.role === 'PARTICIPANT';
+      isInstructor = currentSession.role === 'INSTRUCTOR';
 
       const [allSessions, registrations] = await Promise.all([
         idbAccessLayer.getAll<SessionRecord>('sessions'),
@@ -55,7 +57,14 @@
 </script>
 
 <div class="page">
-  <h2>Session Registration</h2>
+  <div class="page-header">
+    <h2>Session Registration</h2>
+    {#if isInstructor}
+      <button class="create-btn" onclick={() => navigate('/registration/new')}>
+        + Create Session
+      </button>
+    {/if}
+  </div>
 
   {#if loading}
     <p class="loading-text">Loading sessions...</p>
@@ -110,8 +119,30 @@
     padding: 1.5rem;
   }
 
-  h2 {
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 1rem;
+  }
+
+  h2 {
+    margin: 0;
+  }
+
+  .create-btn {
+    padding: 0.5rem 1.25rem;
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .create-btn:hover {
+    background: #3a56d4;
   }
 
   .loading-text {

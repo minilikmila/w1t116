@@ -8,8 +8,9 @@ import { messageCenterService } from './messageCenterService';
 import { registrationService } from './registrationService';
 import { featureFlagService } from './featureFlagService';
 import { authService } from './authService';
-import type { Session } from '../types';
+import type { Role, Session } from '../types';
 import roomsJson from '../config/rooms.json';
+import sessionsJson from '../config/sessions.json';
 
 // ============================================================
 // App Initialization Sequence
@@ -35,11 +36,47 @@ export async function initializeApp(
     }
   }
 
-  // 4. Restore session
+  // 4. Seed default admin user if no users exist
+  onProgress?.('Checking user data...');
+  const existingUsers = await idbAccessLayer.getAll('users');
+  if (existingUsers.length === 0) {
+    await authService.createUser({
+      username: 'admin',
+      password: 'admin',
+      role: 'SYSTEM_ADMIN' as Role,
+      org_unit: 'system',
+    });
+  }
+
+  // 5. Seed sessions if empty
+  onProgress?.('Checking session data...');
+  const existingSessions = await idbAccessLayer.getAll('sessions');
+  if (existingSessions.length === 0) {
+    const now = Date.now();
+    const DAY = 86_400_000;
+    for (let i = 0; i < sessionsJson.length; i++) {
+      const s = sessionsJson[i];
+      // Spread sessions across the next 7 days, 2-hour blocks starting at 9 AM
+      const dayOffset = (i % 7) + 1;
+      const startOfDay = new Date(now + dayOffset * DAY);
+      startOfDay.setHours(9 + (i % 3) * 2, 0, 0, 0);
+      const startTime = startOfDay.getTime();
+      const endTime = startTime + 2 * 60 * 60 * 1000; // 2 hours
+
+      await idbAccessLayer.put('sessions', {
+        ...s,
+        start_time: startTime,
+        end_time: endTime,
+        _version: 1,
+      });
+    }
+  }
+
+  // 6. Restore session
   onProgress?.('Restoring session...');
   const session = authService.restoreSession();
 
-  // 5. Initialize feature flags
+  // 7. Initialize feature flags
   onProgress?.('Loading feature flags...');
   if (session) {
     await featureFlagService.initialize({ role: session.role, org_unit: session.org_unit });
@@ -47,11 +84,11 @@ export async function initializeApp(
     await featureFlagService.initialize();
   }
 
-  // 6. Initialize cross-tab sync
+  // 8. Initialize cross-tab sync
   authService.initCrossTabSync();
   registrationService.initCrossTabSync();
 
-  // 7. Initialize scheduler and register recurring tasks
+  // 9. Initialize scheduler and register recurring tasks
   onProgress?.('Initializing scheduler...');
   await schedulerService.initialize(onProgress);
 
@@ -96,7 +133,7 @@ export async function initializeApp(
     },
   });
 
-  // 8. Run consistency check (non-blocking)
+  // 10. Run consistency check (non-blocking)
   runConsistencyCheckAsync();
 
   onProgress?.('');
