@@ -12,6 +12,7 @@
   let startTime = $state('');
   let endTime = $state('');
   let capacity = $state(20);
+  let fee = $state(0);
 
   let loading = $state(false);
   let submitting = $state(false);
@@ -90,6 +91,7 @@
         capacity,
         current_enrollment: 0,
         status: 'active',
+        fee,
         _version: 1,
       });
 
@@ -167,6 +169,18 @@
           min="1"
           required
         />
+      </div>
+
+      <div class="form-group">
+        <label for="fee">Session Fee ($)</label>
+        <input
+          id="fee"
+          type="number"
+          step="0.01"
+          min="0"
+          bind:value={fee}
+        />
+        <span class="field-hint">Set to 0 for free sessions</span>
       </div>
 
       <div class="form-actions">
@@ -249,6 +263,12 @@
     border-radius: 6px;
     font-size: 0.9rem;
     box-sizing: border-box;
+  }
+
+  .field-hint {
+    font-size: 0.78rem;
+    color: #888;
+    margin-top: 0.15rem;
   }
 
   .form-row {

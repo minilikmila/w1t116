@@ -20,6 +20,8 @@
   let isParticipant = $state(false);
   let currentUserId = $state('');
   let actionInProgress = $state(false);
+  let showConfirmation = $state(false);
+  let roomName = $state('Unknown');
   // CONSISTENCY FIX: replaced raw instructor_id with human-readable name
   let instructorName = $state('Unknown');
   // CONSISTENCY FIX: edit button visibility based on role + ownership
@@ -28,6 +30,7 @@
   let editMode = $state(false);
   let editTitle = $state('');
   let editCapacity = $state(0);
+  let editFee = $state(0);
   let editDateValue = $state('');
   let editStartTime = $state('');
   let editEndTime = $state('');
@@ -92,17 +95,19 @@
         (currentSession.role === 'INSTRUCTOR' && session.instructor_id === currentSession.user_id);
 
       // Fetch all sessions for swap and registrations
-      const [sessions, registrations, instructor] = await Promise.all([
+      const [sessions, registrations, instructor, room] = await Promise.all([
         idbAccessLayer.getAll<SessionRecord>('sessions'),
         isParticipant
           ? registrationService.getRegistrationsForParticipant(currentSession.user_id)
           : Promise.resolve([]),
         idbAccessLayer.get<User>('users', session.instructor_id),
+        idbAccessLayer.get<any>('rooms', session.room_id),
       ]);
 
       allSessions = sessions;
       myRegistrations = registrations;
       instructorName = instructor?.username ?? 'Unknown';
+      roomName = room?.name ?? 'Unknown';
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : 'Failed to load session details.';
     } finally {
@@ -221,6 +226,7 @@
         start_time: startTs,
         end_time: endTs,
         capacity: editCapacity,
+        fee: editFee,
       };
       const { version } = await idbAccessLayer.put('sessions', updated);
       session = { ...updated, _version: version };
@@ -272,6 +278,14 @@
         <span class="detail-label">Status:</span>
         <span class="status-badge status-{session.status}">{session.status}</span>
       </div>
+      <div class="detail-row">
+        <span class="detail-label">Location:</span>
+        <span class="detail-value">{roomName}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Fee:</span>
+        <span class="detail-value fee-value">{(session as any).fee > 0 ? `$${((session as any).fee).toFixed(2)}` : 'Free'}</span>
+      </div>
     </div>
 
     {#if successMessage}
@@ -285,13 +299,38 @@
     {#if isParticipant}
       <div class="actions">
         {#if !isRegistered}
-          <button
-            class="action-button register-button"
-            onclick={handleRegister}
-            disabled={actionInProgress || session.status !== 'active' || availableSeats <= 0}
-          >
-            {actionInProgress ? 'Processing...' : 'Register'}
-          </button>
+          {#if !showConfirmation}
+            <button
+              class="action-button register-button"
+              onclick={() => { showConfirmation = true; }}
+              disabled={session.status !== 'active' || availableSeats <= 0}
+            >
+              Register
+            </button>
+          {:else}
+            <div class="confirmation-box">
+              <h4>Confirm Registration</h4>
+              <div class="confirm-summary">
+                <div><strong>Session:</strong> {session.title}</div>
+                <div><strong>Date:</strong> {formatTime(session.start_time)}</div>
+                <div><strong>Location:</strong> {roomName}</div>
+                <div><strong>Fee:</strong> {(session as any).fee > 0 ? `$${((session as any).fee).toFixed(2)}` : 'Free'}</div>
+              </div>
+              {#if (session as any).fee > 0}
+                <p class="billing-notice">A bill will be generated for this session. You can view it in your Billing section.</p>
+              {/if}
+              <div class="confirm-actions">
+                <button class="action-button cancel-edit-button" onclick={() => { showConfirmation = false; }}>Cancel</button>
+                <button
+                  class="action-button register-button"
+                  onclick={handleRegister}
+                  disabled={actionInProgress}
+                >
+                  {actionInProgress ? 'Processing...' : 'Confirm Registration'}
+                </button>
+              </div>
+            </div>
+          {/if}
         {:else}
           <button
             class="action-button drop-button"
@@ -342,6 +381,7 @@
             editMode = true;
             editTitle = session?.title ?? '';
             editCapacity = session?.capacity ?? 0;
+            editFee = (session as any)?.fee ?? 0;
             const d = new Date(session?.start_time ?? 0);
             editDateValue = d.toISOString().slice(0, 10);
             editStartTime = d.toTimeString().slice(0, 5);
@@ -379,6 +419,10 @@
         <div class="form-group">
           <label for="edit-capacity">Capacity</label>
           <input id="edit-capacity" type="number" bind:value={editCapacity} min="1" required />
+        </div>
+        <div class="form-group">
+          <label for="edit-fee">Session Fee ($)</label>
+          <input id="edit-fee" type="number" step="0.01" min="0" bind:value={editFee} />
         </div>
         <div class="edit-actions">
           <button type="button" class="action-button cancel-edit-button" onclick={() => { editMode = false; }}>Cancel</button>
@@ -625,5 +669,47 @@
 
   .save-edit-button:hover:not(:disabled) {
     background: #218838;
+  }
+
+  .fee-value {
+    font-weight: 600;
+    color: #1a1a2e;
+  }
+
+  .confirmation-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+    padding: 1.25rem;
+    width: 100%;
+  }
+
+  .confirmation-box h4 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    color: #0c4a6e;
+  }
+
+  .confirm-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .billing-notice {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: #92400e;
+    margin-bottom: 0.75rem;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: 0.75rem;
   }
 </style>

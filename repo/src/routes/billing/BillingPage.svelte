@@ -1,15 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { billingService } from '../../lib/services/billingService';
+  import { rbacService } from '../../lib/services/rbacService';
   import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
   import { navigate } from '../../lib/utils/router';
-  import type { Bill, User } from '../../lib/types';
+  import type { Bill, User, Payment } from '../../lib/types';
 
   let bills = $state<Bill[]>([]);
+  let payments = $state<Payment[]>([]);
   // CONSISTENCY FIX: replaced raw participant_id with human-readable names
   let userNames = $state<Record<string, string>>({});
   let loading = $state(true);
   let error = $state('');
+  let currentRole = $state('');
+  let isPrivileged = $state(false);
+  let isParticipant = $state(false);
+  let generating = $state(false);
+  let generationSummary = $state('');
 
   let filterStatus = $state('all');
   let filterPeriod = $state('');
@@ -27,18 +34,48 @@
   // CONSISTENCY FIX: moved participant filtering from UI to billingService.getAllBills
   onMount(async () => {
     try {
+      const session = rbacService.getCurrentSession();
+      currentRole = session.role;
+      isPrivileged = session.role === 'SYSTEM_ADMIN' || session.role === 'OPS_COORDINATOR';
+      isParticipant = session.role === 'PARTICIPANT';
+
       const [loadedBills, users] = await Promise.all([
         billingService.getAllBills(),
         idbAccessLayer.getAll<User>('users'),
       ]);
       bills = loadedBills;
       userNames = Object.fromEntries(users.map((u) => [u.user_id, u.username]));
+
+      // Load payment history for PARTICIPANT
+      if (isParticipant) {
+        const allPayments: Payment[] = [];
+        for (const bill of loadedBills) {
+          const billPayments = await billingService.getPaymentsForBill(bill.bill_id);
+          allPayments.push(...billPayments);
+        }
+        payments = allPayments;
+      }
     } catch (e: any) {
       error = e.message ?? 'Failed to load bills';
     } finally {
       loading = false;
     }
   });
+
+  async function handleGenerateBills() {
+    generating = true;
+    error = '';
+    generationSummary = '';
+    try {
+      const result = await billingService.generateMonthlyBills();
+      bills = [...bills, ...result.bills];
+      generationSummary = `${result.created} bill(s) created, ${result.skipped} skipped (already billed).`;
+    } catch (e: any) {
+      error = e.message ?? 'Failed to generate bills';
+    } finally {
+      generating = false;
+    }
+  }
 
   function formatCurrency(amount: number): string {
     return '$' + amount.toFixed(2);
@@ -80,6 +117,19 @@
 <div class="page">
   <div class="header">
     <h2>Billing</h2>
+    {#if isPrivileged}
+      <div class="header-actions">
+        <button class="btn-primary" onclick={handleGenerateBills} disabled={generating}>
+          {generating ? 'Generating...' : 'Generate Bills'}
+        </button>
+        <button class="btn-primary" onclick={() => navigate('/billing/payments')}>
+          Record Payment
+        </button>
+        <button class="btn-secondary" onclick={() => navigate('/billing/meter')}>
+          Meter Entry
+        </button>
+      </div>
+    {/if}
   </div>
 
   <div class="filters">
@@ -108,21 +158,22 @@
     </div>
   </div>
 
+  {#if generationSummary}
+    <div class="generation-summary">{generationSummary}</div>
+  {/if}
+
   {#if loading}
     <p class="loading">Loading bills...</p>
   {:else if error}
     <p class="error">{error}</p>
   {:else if filteredBills.length === 0}
-    <p class="empty">No bills found matching the current filters.</p>
+    <p class="empty">{isParticipant ? 'No bills generated yet.' : 'No bills found matching the current filters.'}</p>
   {:else}
     <table class="bills-table">
       <thead>
         <tr>
+          <th>Description</th>
           <th>Participant</th>
-          <th>Period</th>
-          <th>Housing</th>
-          <th>Utility</th>
-          <th>Waivers</th>
           <th>Total</th>
           <th>Status</th>
           <th>Due Date</th>
@@ -137,12 +188,13 @@
             tabindex="0"
             onkeydown={(e) => { if (e.key === 'Enter') handleRowClick(bill.bill_id); }}
           >
-            <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
+            <td class="description-cell">
+              {(bill as any).description || `Bill \u2014 ${bill.billing_period}`}
+              {#if (bill as any).used_default_housing_fee}
+                <span class="warning-indicator" title="Using default housing fee">&#9888;</span>
+              {/if}
+            </td>
             <td>{userNames[bill.participant_id] ?? 'Unknown'}</td>
-            <td>{bill.billing_period}</td>
-            <td>{formatCurrency(bill.housing_fee)}</td>
-            <td>{formatCurrency(bill.utility_charge)}</td>
-            <td>{formatCurrency(bill.waiver_amount)}</td>
             <td class="total">{formatCurrency(bill.total)}</td>
             <td>
               <span class="status-badge status-{bill.status}">{bill.status}</span>
@@ -152,6 +204,32 @@
         {/each}
       </tbody>
     </table>
+  {/if}
+
+  {#if isParticipant && payments.length > 0}
+    <div class="payments-section">
+      <h3>Payment History</h3>
+      <table class="bills-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Method</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each payments as payment (payment.payment_id)}
+            <tr>
+              <td class="description-cell">{(payment as any).description || 'Payment'}</td>
+              <td>{formatCurrency(payment.amount)}</td>
+              <td class="capitalize">{payment.payment_method}</td>
+              <td>{formatDate(payment.payment_date)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {/if}
 </div>
 
@@ -163,6 +241,9 @@
   }
 
   .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 1rem;
   }
 
@@ -170,6 +251,65 @@
     margin: 0;
     font-size: 1.5rem;
     color: #1a1a2e;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-primary {
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    padding: 0.45rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: #3a56d4;
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .payments-section {
+    margin-top: 2rem;
+  }
+
+  .payments-section h3 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+    color: #1a1a2e;
+  }
+
+  .capitalize {
+    text-transform: capitalize;
+  }
+
+  .generation-summary {
+    padding: 0.75rem 1rem;
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+  }
+
+  .description-cell {
+    max-width: 300px;
+  }
+
+  .warning-indicator {
+    color: #d97706;
+    margin-left: 0.3rem;
+    font-size: 0.9rem;
   }
 
   .filters {

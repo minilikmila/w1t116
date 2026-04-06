@@ -61,7 +61,13 @@
 </script>
 
 <div class="page">
-  <h2>Analytics Dashboard</h2>
+  <div class="page-header">
+    <h2>Analytics Dashboard</h2>
+    <nav class="sub-nav">
+      <a href="#/analytics/bookings" class="sub-nav-link">Booking Analytics</a>
+      <a href="#/analytics/billing" class="sub-nav-link">Billing Analytics</a>
+    </nav>
+  </div>
 
   {#if error}
     <div class="error-banner">{error}</div>
@@ -148,10 +154,36 @@
     font-family: system-ui, -apple-system, sans-serif;
   }
 
-  h2 {
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 1.5rem;
+  }
+
+  h2 {
+    margin: 0;
     font-size: 1.5rem;
     color: #1a1a2e;
+  }
+
+  .sub-nav {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .sub-nav-link {
+    padding: 0.4rem 0.85rem;
+    background: #f0f4ff;
+    color: #4361ee;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .sub-nav-link:hover {
+    background: #dbeafe;
   }
 
   h3 {

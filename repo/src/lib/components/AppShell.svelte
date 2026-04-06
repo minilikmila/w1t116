@@ -24,6 +24,7 @@
     { label: 'Rooms', path: '/rooms', icon: '□', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR', 'INSTRUCTOR'] },
     { label: 'Registration', path: '/registration', icon: '✎', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR', 'INSTRUCTOR', 'PARTICIPANT'] },
     { label: 'Billing', path: '/billing', icon: '$', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR', 'PARTICIPANT'] },
+    { label: 'Messages', path: '/messages', icon: '✉', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR', 'INSTRUCTOR', 'PARTICIPANT'] },
     { label: 'Analytics', path: '/analytics', icon: '◔', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR'] },
     { label: 'Admin', path: '/admin', icon: '⚙', roles: ['SYSTEM_ADMIN'] },
     { label: 'Maintenance', path: '/admin/maintenance', icon: '⚠', roles: ['SYSTEM_ADMIN', 'OPS_COORDINATOR'] },

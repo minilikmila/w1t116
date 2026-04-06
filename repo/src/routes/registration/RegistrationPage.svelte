@@ -86,6 +86,9 @@
         <tr>
           <th>Title</th>
           <th>Time</th>
+          {#if isParticipant}
+            <th>Fee</th>
+          {/if}
           <th>Available Seats</th>
           <th>Status</th>
           {#if isParticipant}
@@ -99,6 +102,9 @@
           <tr class:registered-row={isParticipant && registeredSessionIds.has(session.session_id)}>
             <td>{session.title}</td>
             <td>{formatTime(session.start_time)}</td>
+            {#if isParticipant}
+              <td>{(session as any).fee > 0 ? `$${((session as any).fee).toFixed(2)}` : 'Free'}</td>
+            {/if}
             <td>{availableSeats(session)}</td>
             <td>
               <span class="status-badge status-{session.status}">{session.status}</span>

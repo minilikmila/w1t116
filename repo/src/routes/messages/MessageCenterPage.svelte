@@ -20,6 +20,7 @@
   let readMessageIds = $state<Set<string>>(new Set());
   let unreadCount = $state(0);
   let userId = $state('');
+  let canCompose = $state(false);
 
   let totalPages = $derived(Math.max(1, Math.ceil(total / pageSize)));
 
@@ -27,6 +28,7 @@
     try {
       const session = rbacService.getCurrentSession();
       userId = session.user_id;
+      canCompose = ['SYSTEM_ADMIN', 'OPS_COORDINATOR', 'INSTRUCTOR'].includes(session.role);
       unreadCount = await messageCenterService.getUnreadCount(userId);
       await loadInbox();
     } catch (e: any) {
@@ -132,6 +134,11 @@
     {#if unreadCount > 0}
       <span class="unread-badge">{unreadCount} unread</span>
     {/if}
+    {#if canCompose}
+      <button class="compose-btn" onclick={() => navigate('/messages/compose')}>
+        + Compose
+      </button>
+    {/if}
   </div>
 
   <div class="search-bar">
@@ -229,6 +236,22 @@
     margin: 0;
     font-size: 1.5rem;
     color: #1e293b;
+  }
+
+  .compose-btn {
+    margin-left: auto;
+    padding: 0.45rem 1rem;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .compose-btn:hover {
+    background: #2563eb;
   }
 
   .unread-badge {

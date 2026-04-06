@@ -14,8 +14,10 @@
   let loading = $state(true);
   let error = $state('');
   let canRecordPayment = $state(false);
-  // CONSISTENCY FIX: replaced raw participant_id with human-readable name
   let participantName = $state('Unknown');
+  let totalPaid = $state(0);
+  let remainingBalance = $state(0);
+  let derivedStatus = $state('');
 
   let billId = $derived(get(currentParams).billId ?? '');
 
@@ -32,18 +34,19 @@
       const session = rbacService.getCurrentSession();
       canRecordPayment = session.role === 'SYSTEM_ADMIN' || session.role === 'OPS_COORDINATOR';
 
-      // Service-level filtering now enforced in getBill
-      const loadedBill = await billingService.getBill(id);
-      // Detail view protection: redirect if not permitted
-      if (!loadedBill) {
+      // FIX 3: use getBillWithBalance for derived status + balance info
+      const result = await billingService.getBillWithBalance(id);
+      if (!result) {
         addNotification('You do not have permission to view this resource', 'error');
         navigate('/billing');
         return;
       }
-      bill = loadedBill;
+      bill = result.bill;
+      totalPaid = result.totalPaid;
+      remainingBalance = result.remainingBalance;
+      derivedStatus = result.derivedStatus;
       payments = await billingService.getPaymentsForBill(id);
 
-      // Resolve participant name
       const user = await idbAccessLayer.get<User>('users', bill.participant_id);
       participantName = user?.username ?? 'Unknown';
     } catch (e: any) {
@@ -86,14 +89,20 @@
   {:else if bill}
     <div class="bill-header">
       <h2>Bill Detail</h2>
-      <span class="status-badge status-{bill.status}">{bill.status}</span>
+      <span class="status-badge status-{derivedStatus}">{derivedStatus}</span>
+    </div>
+
+    <div class="bill-description">
+      {(bill as any).description || `Bill \u2014 ${bill.billing_period}`}
+      {#if (bill as any).used_default_housing_fee}
+        <span class="warning-indicator" title="Housing fee was set from global default (no per-participant value)">&#9888; Default housing fee used</span>
+      {/if}
     </div>
 
     <div class="detail-card">
       <h3>Line Items</h3>
       <table class="line-items-table">
         <tbody>
-          <!-- CONSISTENCY FIX: replaced raw participant_id with human-readable name -->
           <tr>
             <td class="label">Participant</td>
             <td>{participantName}</td>
@@ -106,17 +115,29 @@
             <td class="label">Housing Fee</td>
             <td>{formatCurrency(bill.housing_fee)}</td>
           </tr>
-          <tr>
-            <td class="label">Utility Charge</td>
-            <td>{formatCurrency(bill.utility_charge)}</td>
-          </tr>
-          <tr>
-            <td class="label">Waiver Amount</td>
-            <td class="waiver">-{formatCurrency(bill.waiver_amount)}</td>
-          </tr>
+          {#if bill.utility_charge > 0}
+            <tr>
+              <td class="label">Utility Charge</td>
+              <td>{formatCurrency(bill.utility_charge)}</td>
+            </tr>
+          {/if}
+          {#if bill.waiver_amount > 0}
+            <tr>
+              <td class="label">Waivers Applied</td>
+              <td class="waiver">-{formatCurrency(bill.waiver_amount)}</td>
+            </tr>
+          {/if}
           <tr class="total-row">
-            <td class="label">Total</td>
+            <td class="label">Total Due</td>
             <td class="total">{formatCurrency(bill.total)}</td>
+          </tr>
+          <tr>
+            <td class="label">Total Paid</td>
+            <td>{formatCurrency(totalPaid)}</td>
+          </tr>
+          <tr>
+            <td class="label">Remaining Balance</td>
+            <td class="total">{formatCurrency(remainingBalance)}</td>
           </tr>
           <tr>
             <td class="label">Due Date</td>
@@ -140,6 +161,7 @@
         <table class="payments-table">
           <thead>
             <tr>
+              <th>Description</th>
               <th>Amount</th>
               <th>Method</th>
               <th>Date</th>
@@ -148,6 +170,7 @@
           <tbody>
             {#each payments as payment (payment.payment_id)}
               <tr>
+                <td class="pay-desc">{(payment as any).description || 'Payment'}</td>
                 <td>{formatCurrency(payment.amount)}</td>
                 <td class="method">{payment.payment_method}</td>
                 <td>{formatDate(payment.payment_date)}</td>
@@ -274,6 +297,28 @@
 
   .method {
     text-transform: capitalize;
+  }
+
+  .bill-description {
+    font-size: 1rem;
+    color: #374151;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: #f0f4ff;
+    border-radius: 6px;
+    border-left: 3px solid #4361ee;
+  }
+
+  .warning-indicator {
+    color: #d97706;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+  }
+
+  .pay-desc {
+    max-width: 280px;
+    font-size: 0.82rem;
+    color: #555;
   }
 
   .btn-primary {

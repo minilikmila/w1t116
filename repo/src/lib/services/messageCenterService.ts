@@ -39,8 +39,14 @@ function matchesTargeting(message: Message, role: Role, orgUnit: string): boolea
 
 async function getVisibleMessages(userId: string): Promise<Message[]> {
   const session = rbacService.getCurrentSession();
-  const allMessages = await idbAccessLayer.getAll<Message>('messages', 'idx_status', 'published');
 
+  // SYSTEM_ADMIN sees all messages at all statuses
+  if (session.role === 'SYSTEM_ADMIN') {
+    return idbAccessLayer.getAll<Message>('messages');
+  }
+
+  // Other roles see only published messages targeted to their role
+  const allMessages = await idbAccessLayer.getAll<Message>('messages', 'idx_status', 'published');
   return allMessages.filter((m) => matchesTargeting(m, session.role, session.org_unit));
 }
 

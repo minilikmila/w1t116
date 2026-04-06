@@ -15,6 +15,12 @@
   let newOrgUnit: string = $state('');
   let creating: boolean = $state(false);
 
+  // Edit state
+  let editingUser: User | null = $state(null);
+  let editRole: Role = $state('PARTICIPANT');
+  let editOrgUnit: string = $state('');
+  let saving: boolean = $state(false);
+
   async function loadUsers(): Promise<void> {
     loading = true;
     feedback = null;
@@ -55,6 +61,39 @@
     showCreateForm = false;
   }
 
+  function startEdit(user: User): void {
+    editingUser = user;
+    editRole = user.role;
+    editOrgUnit = user.org_unit;
+    showCreateForm = false;
+    feedback = null;
+  }
+
+  function cancelEdit(): void {
+    editingUser = null;
+  }
+
+  async function saveEdit(): Promise<void> {
+    if (!editingUser) return;
+    saving = true;
+    feedback = null;
+    try {
+      const updated = {
+        ...editingUser,
+        role: editRole,
+        org_unit: editOrgUnit,
+      };
+      await idbAccessLayer.put('users', updated);
+      editingUser = null;
+      await loadUsers();
+      feedback = { type: 'success', message: 'User updated successfully.' };
+    } catch (err: any) {
+      feedback = { type: 'error', message: err.message || 'Failed to update user' };
+    } finally {
+      saving = false;
+    }
+  }
+
   loadUsers();
 </script>
 
@@ -70,6 +109,30 @@
       {showCreateForm ? 'Cancel' : 'Create User'}
     </button>
   </div>
+
+  {#if editingUser}
+    <form class="create-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
+      <h3>Edit User: {editingUser.username}</h3>
+      <label class="field">
+        <span>Role</span>
+        <select bind:value={editRole}>
+          {#each ROLES as role}
+            <option value={role}>{role}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Org Unit</span>
+        <input type="text" bind:value={editOrgUnit} required placeholder="e.g. dept-a" />
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick={cancelEdit}>Cancel</button>
+        <button type="submit" class="btn-primary" disabled={saving}>
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
+    </form>
+  {/if}
 
   {#if showCreateForm}
     <form class="create-form" onsubmit={(e) => { e.preventDefault(); createUser(); }}>
@@ -112,6 +175,7 @@
             <th>Username</th>
             <th>Role</th>
             <th>Org Unit</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -120,6 +184,9 @@
               <td>{user.username}</td>
               <td><span class="role-badge">{user.role}</span></td>
               <td>{user.org_unit}</td>
+              <td>
+                <button class="btn-edit" onclick={() => startEdit(user)}>Edit</button>
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -252,5 +319,39 @@
   .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    padding: 0.5rem 1.25rem;
+    background: #e9ecef;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .btn-secondary:hover {
+    background: #dee2e6;
+  }
+
+  .btn-edit {
+    padding: 0.3rem 0.75rem;
+    background: #4a90d9;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .btn-edit:hover {
+    background: #357abd;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
   }
 </style>

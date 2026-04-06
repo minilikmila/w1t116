@@ -68,13 +68,15 @@ describe('billingService', () => {
         return Array.from(mockIdb._getStore(store).values());
       });
 
-      const bills = await billingService.generateMonthlyBills();
+      const result = await billingService.generateMonthlyBills();
 
-      expect(bills).toHaveLength(2);
-      expect(bills[0].housing_fee).toBe(950);
-      expect(bills[0].utility_charge).toBe(0); // no meter reading
-      expect(bills[0].total).toBe(950);
-      expect(bills[0].status).toBe('generated');
+      expect(result.bills).toHaveLength(2);
+      expect(result.created).toBe(2);
+      expect(result.skipped).toBe(0);
+      expect(result.bills[0].housing_fee).toBe(950);
+      expect(result.bills[0].utility_charge).toBe(0); // no meter reading
+      expect(result.bills[0].total).toBe(950);
+      expect(result.bills[0].status).toBe('generated');
     });
 
     it('applies meter reading to utility charge', async () => {
@@ -104,10 +106,10 @@ describe('billingService', () => {
         return [];
       });
 
-      const bills = await billingService.generateMonthlyBills();
+      const result = await billingService.generateMonthlyBills();
 
-      expect(bills[0].utility_charge).toBe(200); // 100 * 2.0
-      expect(bills[0].total).toBe(1150); // 950 + 200
+      expect(result.bills[0].utility_charge).toBe(200); // 100 * 2.0
+      expect(result.bills[0].total).toBe(1150); // 950 + 200
     });
 
     it('applies waivers correctly', async () => {
@@ -131,11 +133,11 @@ describe('billingService', () => {
         return [];
       });
 
-      const bills = await billingService.generateMonthlyBills();
+      const result = await billingService.generateMonthlyBills();
 
       // 950 - 100 fixed = 850, then 10% off = 765
-      expect(bills[0].total).toBe(765);
-      expect(bills[0].waiver_amount).toBe(950 - 765); // 185
+      expect(result.bills[0].total).toBe(765);
+      expect(result.bills[0].waiver_amount).toBe(950 - 765); // 185
     });
 
     it('requires SYSTEM_ADMIN or OPS_COORDINATOR role', async () => {
