@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       'unit_tests/**/*.test.ts',
       'API_tests/**/*.test.ts',
+      'integration_tests/**/*.test.ts',
     ],
     alias: {
       '$lib': '/src/lib',

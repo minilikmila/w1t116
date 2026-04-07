@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
+  import { roomSchedulingService } from '../../lib/services/roomSchedulingService';
   import { rbacService } from '../../lib/services/rbacService';
   import { navigate } from '../../lib/utils/router';
-  import type { Room } from '../../lib/types';
+  import type { Room, ConflictResult, ScoredRoom } from '../../lib/types';
 
   let rooms = $state<Room[]>([]);
   let selectedRoomId = $state('');
@@ -18,6 +19,7 @@
   let submitting = $state(false);
   let errorMessage = $state('');
   let successMessage = $state('');
+  let conflictResult = $state<ConflictResult | null>(null);
 
   onMount(async () => {
     loading = true;
@@ -60,43 +62,27 @@
     }
 
     submitting = true;
+    conflictResult = null;
     try {
-      const session = rbacService.getCurrentSession();
-      const sessionId = crypto.randomUUID();
-      const bookingId = crypto.randomUUID();
+      const currentSession = rbacService.getCurrentSession();
 
-      // Create a corresponding booking for the room
-      await idbAccessLayer.put('bookings', {
-        booking_id: bookingId,
-        room_id: selectedRoomId,
-        user_id: session.user_id,
-        start_time: startTs,
-        end_time: endTs,
-        requested_equipment: [],
-        participant_capacity: capacity,
-        status: 'confirmed',
-        created_at: Date.now(),
-        _version: 1,
-      });
-
-      // Create the session record
-      await idbAccessLayer.put('sessions', {
-        session_id: sessionId,
-        instructor_id: session.user_id,
-        room_id: selectedRoomId,
-        booking_id: bookingId,
+      const result = await roomSchedulingService.createSessionBooking({
         title: title.trim(),
+        room_id: selectedRoomId,
         start_time: startTs,
         end_time: endTs,
         capacity,
-        current_enrollment: 0,
-        status: 'active',
         fee,
-        _version: 1,
+        instructor_id: currentSession.user_id,
       });
 
-      successMessage = 'Session created successfully!';
-      setTimeout(() => navigate('/registration'), 800);
+      if ('conflicts' in result) {
+        conflictResult = result as ConflictResult;
+        errorMessage = `Booking conflict detected: ${result.conflicts.map((c) => c.description).join('; ')}`;
+      } else {
+        successMessage = 'Session created successfully!';
+        setTimeout(() => navigate('/registration'), 800);
+      }
     } catch (e: any) {
       errorMessage = e.message ?? 'Failed to create session.';
     } finally {
@@ -115,6 +101,20 @@
   {/if}
   {#if errorMessage}
     <div class="alert alert-error">{errorMessage}</div>
+  {/if}
+
+  {#if conflictResult && conflictResult.alternatives.length > 0}
+    <div class="alternatives-panel">
+      <h3>Alternative Rooms Available</h3>
+      <ul>
+        {#each conflictResult.alternatives as alt (alt.room.room_id)}
+          <li>
+            <strong>{alt.room.name}</strong> ({alt.room.building_code} - Floor {alt.room.floor_code}, Cap: {alt.room.capacity})
+            — Score: {(alt.total_score * 100).toFixed(0)}%
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
 
   {#if loading}
@@ -319,5 +319,29 @@
 
   .btn-secondary:hover {
     background: #dee2e6;
+  }
+
+  .alternatives-panel {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .alternatives-panel h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: #856404;
+  }
+
+  .alternatives-panel ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.88rem;
+  }
+
+  .alternatives-panel li {
+    margin-bottom: 0.3rem;
   }
 </style>

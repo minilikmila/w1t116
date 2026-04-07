@@ -3,7 +3,9 @@
   import { registrationService } from '../../lib/services/registrationService';
   import { rbacService } from '../../lib/services/rbacService';
   import { idbAccessLayer } from '../../lib/services/idbAccessLayer';
+  import { roomSchedulingService } from '../../lib/services/roomSchedulingService';
   import RetryDrawer from '../../lib/components/RetryDrawer.svelte';
+  import AttendanceTracker from '../../lib/components/AttendanceTracker.svelte';
   import { navigate } from '../../lib/utils/router';
   import { addNotification } from '../../lib/stores';
   import type { SessionRecord, Registration, User } from '../../lib/types';
@@ -220,16 +222,17 @@
         editSubmitting = false;
         return;
       }
-      const updated = {
-        ...session,
-        title: editTitle.trim(),
-        start_time: startTs,
-        end_time: endTs,
-        capacity: editCapacity,
-        fee: editFee,
-      };
-      const { version } = await idbAccessLayer.put('sessions', updated);
-      session = { ...updated, _version: version };
+      const updatedSession = await roomSchedulingService.updateSessionBooking(
+        session.session_id,
+        {
+          title: editTitle.trim(),
+          start_time: startTs,
+          end_time: endTs,
+          capacity: editCapacity,
+          fee: editFee,
+        },
+      );
+      session = updatedSession;
       editMode = false;
       successMessage = 'Session updated successfully.';
     } catch (err: unknown) {
@@ -392,6 +395,10 @@
           Edit Session
         </button>
       </div>
+    {/if}
+
+    {#if canEdit && session}
+      <AttendanceTracker sessionId={session.session_id} />
     {/if}
     {:else}
     <!-- Edit mode: reuse session creation form layout -->

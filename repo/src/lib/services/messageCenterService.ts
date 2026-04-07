@@ -37,6 +37,14 @@ function matchesTargeting(message: Message, role: Role, orgUnit: string): boolea
   return true;
 }
 
+function isMessageVisibleTo(message: Message, role: Role, orgUnit: string): boolean {
+  // SYSTEM_ADMIN sees all messages at all statuses
+  if (role === 'SYSTEM_ADMIN') return true;
+  // Non-admins only see published messages that target their role/org
+  if (message.status !== 'published') return false;
+  return matchesTargeting(message, role, orgUnit);
+}
+
 async function getVisibleMessages(userId: string): Promise<Message[]> {
   const session = rbacService.getCurrentSession();
 
@@ -103,9 +111,29 @@ async function schedule(messageId: string, scheduledAt: number): Promise<void> {
   message.status = 'scheduled';
   message.scheduled_at = scheduledAt;
 
-  // NOTE: Scheduler integration will be wired in Phase 4.
-  // For now just persist the scheduled state.
   await idbAccessLayer.put('messages', message);
+}
+
+// ============================================================
+// 3b. publishDueMessages (scheduler-driven)
+// ============================================================
+
+async function publishDueMessages(): Promise<number> {
+  const allMessages = await idbAccessLayer.getAll<Message>('messages', 'idx_status', 'scheduled');
+  const now = Date.now();
+  let publishedCount = 0;
+
+  for (const message of allMessages) {
+    if (message.status !== 'scheduled') continue;
+    if (!message.scheduled_at || message.scheduled_at > now) continue;
+
+    message.status = 'published';
+    message.published_at = Date.now();
+    await idbAccessLayer.put('messages', message);
+    publishedCount++;
+  }
+
+  return publishedCount;
 }
 
 // ============================================================
@@ -239,7 +267,15 @@ async function search(query: string, userId: string): Promise<PaginatedMessages>
 // ============================================================
 
 async function getMessage(messageId: string): Promise<Message | undefined> {
-  return idbAccessLayer.get<Message>('messages', messageId);
+  const message = await idbAccessLayer.get<Message>('messages', messageId);
+  if (!message) return undefined;
+
+  const session = rbacService.getCurrentSession();
+  if (!isMessageVisibleTo(message, session.role, session.org_unit)) {
+    return undefined;
+  }
+
+  return message;
 }
 
 // ============================================================
@@ -263,6 +299,7 @@ export const messageCenterService = {
   compose,
   publish,
   schedule,
+  publishDueMessages,
   retract,
   pin,
   recordReadReceipt,

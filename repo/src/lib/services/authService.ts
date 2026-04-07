@@ -65,6 +65,27 @@ async function login(username: string, password: string): Promise<Session> {
   };
   await idbAccessLayer.put('users', clearedUser);
 
+  // Wire encryption hooks if encryption is enabled for this user
+  if (user.encryption_enabled && user.encryption_salt) {
+    const encKey = await encryptionService.deriveKey(
+      password,
+      new Uint8Array(user.encryption_salt),
+    );
+    idbAccessLayer.setEncryptionHooks(
+      async (data: unknown, _userId: string) => {
+        const { ciphertext, iv } = await encryptionService.encrypt(encKey, data);
+        return { ciphertext, iv };
+      },
+      async (data: unknown, _userId: string) => {
+        const record = data as { ciphertext: ArrayBuffer; iv: Uint8Array };
+        if (record.ciphertext && record.iv) {
+          return encryptionService.decrypt(encKey, record.ciphertext, new Uint8Array(record.iv));
+        }
+        return data;
+      },
+    );
+  }
+
   // Build session
   const session: Session = {
     user_id: user.user_id,
@@ -89,6 +110,7 @@ async function logout(): Promise<void> {
 
   if (session) {
     localStorage.removeItem(`session_${session.user_id}`);
+    idbAccessLayer.clearEncryptionHooks();
     channelManager.broadcast(CHANNELS.AUTH_SYNC, {
       type: 'logout',
       user_id: session.user_id,
@@ -254,6 +276,83 @@ async function createUser(userData: {
 }
 
 // ============================================================
+// 7. enableEncryption
+// ============================================================
+
+async function enableEncryption(userId: string, password: string): Promise<void> {
+  const user: User | undefined = await idbAccessLayer.get('users', userId);
+  if (!user) throw new Error('User not found');
+
+  // Verify password
+  const hash = await encryptionService.hashPassword(
+    password,
+    new Uint8Array(user.salt) as unknown as Uint8Array,
+  );
+  if (!compareBuffers(hash, user.password_hash)) {
+    throw new Error('Invalid password');
+  }
+
+  // Generate encryption salt and derive key
+  const encSalt = encryptionService.generateSalt();
+  const encKey = await encryptionService.deriveKey(password, encSalt);
+
+  // Register hooks
+  idbAccessLayer.setEncryptionHooks(
+    async (data: unknown, _userId: string) => {
+      const { ciphertext, iv } = await encryptionService.encrypt(encKey, data);
+      return { ciphertext, iv };
+    },
+    async (data: unknown, _userId: string) => {
+      const record = data as { ciphertext: ArrayBuffer; iv: Uint8Array };
+      if (record.ciphertext && record.iv) {
+        return encryptionService.decrypt(encKey, record.ciphertext, new Uint8Array(record.iv));
+      }
+      return data;
+    },
+  );
+
+  // Persist encryption state
+  localStorage.setItem(`encryption_enabled_${userId}`, 'true');
+  const updatedUser: User = {
+    ...user,
+    encryption_enabled: true,
+    encryption_salt: encSalt.buffer as ArrayBuffer,
+    _version: user._version + 1,
+  };
+  await idbAccessLayer.put('users', updatedUser);
+}
+
+// ============================================================
+// 8. disableEncryption
+// ============================================================
+
+async function disableEncryption(userId: string, password: string): Promise<void> {
+  const user: User | undefined = await idbAccessLayer.get('users', userId);
+  if (!user) throw new Error('User not found');
+
+  // Verify password
+  const hash = await encryptionService.hashPassword(
+    password,
+    new Uint8Array(user.salt) as unknown as Uint8Array,
+  );
+  if (!compareBuffers(hash, user.password_hash)) {
+    throw new Error('Invalid password');
+  }
+
+  // Clear hooks and flag
+  idbAccessLayer.clearEncryptionHooks();
+  localStorage.removeItem(`encryption_enabled_${userId}`);
+
+  const updatedUser: User = {
+    ...user,
+    encryption_enabled: false,
+    encryption_salt: null,
+    _version: user._version + 1,
+  };
+  await idbAccessLayer.put('users', updatedUser);
+}
+
+// ============================================================
 // Export
 // ============================================================
 
@@ -264,6 +363,8 @@ export const authService = {
   changePassword,
   initCrossTabSync,
   createUser,
+  enableEncryption,
+  disableEncryption,
 };
 
 export default authService;

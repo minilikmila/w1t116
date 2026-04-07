@@ -1,7 +1,7 @@
 import { idbAccessLayer } from './idbAccessLayer';
 import { rbacService } from './rbacService';
 import { opsConfigService } from './opsConfigService';
-import type { Booking, BookingRequest, Conflict, ConflictResult, ScoredRoom, Room, MaintenanceWindow, Equipment } from '../types';
+import type { Booking, BookingRequest, Conflict, ConflictResult, ScoredRoom, Room, MaintenanceWindow, Equipment, SessionRecord } from '../types';
 import { AccessError, VersionConflictError } from '../types';
 
 // ============================================================
@@ -335,6 +335,146 @@ async function getAllBookings(): Promise<Booking[]> {
 }
 
 // ============================================================
+// createSessionBooking
+// ============================================================
+
+async function createSessionBooking(
+  sessionData: {
+    title: string;
+    room_id: string;
+    start_time: number;
+    end_time: number;
+    capacity: number;
+    fee: number;
+    instructor_id: string;
+  },
+): Promise<{ session: SessionRecord; booking: Booking } | ConflictResult> {
+  rbacService.checkPermission('session:create');
+
+  const bookingRequest: BookingRequest = {
+    room_id: sessionData.room_id,
+    start_time: sessionData.start_time,
+    end_time: sessionData.end_time,
+    requested_equipment: [],
+    participant_capacity: sessionData.capacity,
+    user_id: sessionData.instructor_id,
+  };
+
+  const result = await createBooking(bookingRequest);
+
+  if ('conflicts' in result) {
+    return result as ConflictResult;
+  }
+
+  const booking = result as Booking;
+
+  const session: SessionRecord = {
+    session_id: crypto.randomUUID(),
+    instructor_id: sessionData.instructor_id,
+    room_id: sessionData.room_id,
+    booking_id: booking.booking_id,
+    title: sessionData.title,
+    start_time: sessionData.start_time,
+    end_time: sessionData.end_time,
+    capacity: sessionData.capacity,
+    current_enrollment: 0,
+    status: 'active',
+    fee: sessionData.fee,
+    _version: 1,
+  };
+
+  await idbAccessLayer.put('sessions', session);
+  return { session, booking };
+}
+
+// ============================================================
+// updateSessionBooking
+// ============================================================
+
+async function updateSessionBooking(
+  sessionId: string,
+  updates: {
+    title?: string;
+    start_time?: number;
+    end_time?: number;
+    capacity?: number;
+    fee?: number;
+  },
+): Promise<SessionRecord> {
+  const existingSession = await idbAccessLayer.get<SessionRecord>('sessions', sessionId);
+  if (!existingSession) {
+    throw new Error(`Session ${sessionId} not found.`);
+  }
+
+  // RBAC: owner or admin/ops
+  const currentUser = rbacService.getCurrentSession();
+  if (
+    currentUser.role !== 'SYSTEM_ADMIN' &&
+    currentUser.role !== 'OPS_COORDINATOR' &&
+    existingSession.instructor_id !== currentUser.user_id
+  ) {
+    throw new AccessError('You do not have permission to edit this session.');
+  }
+
+  const timeChanged =
+    (updates.start_time !== undefined && updates.start_time !== existingSession.start_time) ||
+    (updates.end_time !== undefined && updates.end_time !== existingSession.end_time);
+
+  // If time changed, run conflict detection and update the linked booking
+  if (timeChanged && existingSession.booking_id) {
+    const newStart = updates.start_time ?? existingSession.start_time;
+    const newEnd = updates.end_time ?? existingSession.end_time;
+
+    // Detect conflicts excluding the session's own booking
+    const bookingRequest: BookingRequest = {
+      room_id: existingSession.room_id,
+      start_time: newStart,
+      end_time: newEnd,
+      requested_equipment: [],
+      participant_capacity: updates.capacity ?? existingSession.capacity,
+      user_id: existingSession.instructor_id,
+    };
+
+    const conflicts = await detectConflicts(bookingRequest);
+    // Filter out conflicts with the session's own booking
+    const realConflicts = conflicts.filter(
+      (c) => c.conflicting_record_id !== existingSession.booking_id,
+    );
+
+    if (realConflicts.length > 0) {
+      const alternatives = await getAlternatives(bookingRequest);
+      throw new Error(
+        `Time change conflicts with ${realConflicts.length} existing booking(s). ` +
+        (alternatives.length > 0
+          ? `${alternatives.length} alternative room(s) available.`
+          : 'No alternatives available.'),
+      );
+    }
+
+    // Update the linked booking
+    await updateBooking(existingSession.booking_id, {
+      start_time: newStart,
+      end_time: newEnd,
+      participant_capacity: updates.capacity ?? existingSession.capacity,
+    });
+  }
+
+  // Update the session record
+  const updatedSession: SessionRecord = {
+    ...existingSession,
+    title: updates.title ?? existingSession.title,
+    start_time: updates.start_time ?? existingSession.start_time,
+    end_time: updates.end_time ?? existingSession.end_time,
+    capacity: updates.capacity ?? existingSession.capacity,
+    fee: updates.fee ?? existingSession.fee,
+    _version: existingSession._version + 1,
+  };
+
+  await idbAccessLayer.put('sessions', updatedSession);
+  return updatedSession;
+}
+
+// ============================================================
 // Export
 // ============================================================
 
@@ -346,6 +486,8 @@ export const roomSchedulingService = {
   getAlternatives,
   getBooking,
   getAllBookings,
+  createSessionBooking,
+  updateSessionBooking,
 };
 
 export default roomSchedulingService;

@@ -36,7 +36,7 @@
 
       const msg = await messageCenterService.getMessage(id);
       if (!msg) {
-        error = 'Message not found.';
+        error = 'Message not found or you do not have access.';
         loading = false;
         return;
       }

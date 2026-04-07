@@ -59,6 +59,7 @@ export interface SessionRecord {
   capacity: number;
   current_enrollment: number;
   status: 'active' | 'cancelled' | 'completed';
+  fee: number;
   _version: number;
 }
 

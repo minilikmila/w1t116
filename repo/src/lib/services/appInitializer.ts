@@ -123,6 +123,16 @@ export async function initializeApp(
     },
   });
 
+  // Register scheduled message publication: every hour
+  await schedulerService.registerTask({
+    task_id: 'message-publish',
+    schedule_definition: 'interval:1',
+    task_type: 'messaging',
+    handler: async () => {
+      await messageCenterService.publishDueMessages();
+    },
+  });
+
   // Register idempotency key cleanup: every 6 hours
   await schedulerService.registerTask({
     task_id: 'idempotency-cleanup',
