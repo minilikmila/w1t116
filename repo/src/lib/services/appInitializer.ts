@@ -11,6 +11,7 @@ import { authService } from './authService';
 import type { Role, Session } from '../types';
 import roomsJson from '../config/rooms.json';
 import sessionsJson from '../config/sessions.json';
+import equipmentJson from '../config/equipment.json';
 
 // ============================================================
 // App Initialization Sequence
@@ -33,6 +34,15 @@ export async function initializeApp(
   if (existingRooms.length === 0) {
     for (const room of roomsJson) {
       await idbAccessLayer.put('rooms', { ...room, _version: 1 });
+    }
+  }
+
+  // 3b. Seed equipment if empty
+  onProgress?.('Checking equipment data...');
+  const existingEquipment = await idbAccessLayer.getAll('equipment');
+  if (existingEquipment.length === 0) {
+    for (const eq of equipmentJson) {
+      await idbAccessLayer.put('equipment', { ...eq, _version: 1 });
     }
   }
 
@@ -93,12 +103,13 @@ export async function initializeApp(
   await schedulerService.initialize(onProgress);
 
   // Register billing task: 1st of month at 12:05 AM
+  // Uses scheduler-safe path that bypasses interactive RBAC
   await schedulerService.registerTask({
     task_id: 'monthly-billing',
     schedule_definition: 'monthly:1:0:05',
     task_type: 'billing',
     handler: async () => {
-      await billingService.generateMonthlyBills();
+      await billingService.generateMonthlyBillsScheduled();
     },
   });
 

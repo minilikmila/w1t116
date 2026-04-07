@@ -100,6 +100,11 @@ export const routeDefinitions: RouteDefinition[] = [
     roles: allRoles,
   },
   {
+    path: '/account/security',
+    component: () => import('../../routes/account/AccountSecurityPage.svelte'),
+    roles: allRoles,
+  },
+  {
     path: '/admin',
     component: () => import('../../routes/admin/AdminSettingsPage.svelte'),
     roles: ['SYSTEM_ADMIN'],

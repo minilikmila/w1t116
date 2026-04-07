@@ -20,6 +20,7 @@
   let errorMessage = $state('');
   let successMessage = $state('');
   let conflictResult = $state<ConflictResult | null>(null);
+  let showConflictModal = $state(false);
 
   onMount(async () => {
     loading = true;
@@ -78,7 +79,7 @@
 
       if ('conflicts' in result) {
         conflictResult = result as ConflictResult;
-        errorMessage = `Booking conflict detected: ${result.conflicts.map((c) => c.description).join('; ')}`;
+        showConflictModal = true;
       } else {
         successMessage = 'Session created successfully!';
         setTimeout(() => navigate('/registration'), 800);
@@ -88,6 +89,44 @@
     } finally {
       submitting = false;
     }
+  }
+
+  async function bookAlternativeRoom(alt: ScoredRoom) {
+    submitting = true;
+    errorMessage = '';
+    try {
+      const currentSession = rbacService.getCurrentSession();
+      const startTs = buildTimestamp(dateValue, startTime);
+      const endTs = buildTimestamp(dateValue, endTime);
+
+      const result = await roomSchedulingService.createSessionBooking({
+        title: title.trim(),
+        room_id: alt.room.room_id,
+        start_time: startTs,
+        end_time: endTs,
+        capacity,
+        fee,
+        instructor_id: currentSession.user_id,
+      });
+
+      if ('conflicts' in result) {
+        conflictResult = result as ConflictResult;
+      } else {
+        showConflictModal = false;
+        conflictResult = null;
+        successMessage = 'Session created successfully!';
+        setTimeout(() => navigate('/registration'), 800);
+      }
+    } catch (e: any) {
+      errorMessage = e.message ?? 'Failed to create session.';
+    } finally {
+      submitting = false;
+    }
+  }
+
+  function closeModal() {
+    showConflictModal = false;
+    conflictResult = null;
   }
 </script>
 
@@ -101,20 +140,6 @@
   {/if}
   {#if errorMessage}
     <div class="alert alert-error">{errorMessage}</div>
-  {/if}
-
-  {#if conflictResult && conflictResult.alternatives.length > 0}
-    <div class="alternatives-panel">
-      <h3>Alternative Rooms Available</h3>
-      <ul>
-        {#each conflictResult.alternatives as alt (alt.room.room_id)}
-          <li>
-            <strong>{alt.room.name}</strong> ({alt.room.building_code} - Floor {alt.room.floor_code}, Cap: {alt.room.capacity})
-            — Score: {(alt.total_score * 100).toFixed(0)}%
-          </li>
-        {/each}
-      </ul>
-    </div>
   {/if}
 
   {#if loading}
@@ -194,6 +219,60 @@
     </form>
   {/if}
 </div>
+
+{#if showConflictModal && conflictResult}
+  <div class="modal-backdrop" onclick={closeModal} role="presentation">
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>Scheduling Conflict</h3>
+        <button class="modal-close" onclick={closeModal} aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <h4>Conflicts</h4>
+        <ul class="conflict-list">
+          {#each conflictResult.conflicts as conflict (conflict.conflicting_record_id)}
+            <li>
+              <span class="conflict-type">{conflict.type.replace('_', ' ')}</span>
+              <span class="conflict-desc">{conflict.description}</span>
+            </li>
+          {/each}
+        </ul>
+
+        {#if conflictResult.alternatives.length > 0}
+          <h4>Alternative Rooms</h4>
+          <div class="alternatives">
+            {#each conflictResult.alternatives.slice(0, 5) as alt (alt.room.room_id)}
+              <div class="alt-card">
+                <div class="alt-header">
+                  <strong>{alt.room.name}</strong>
+                  <span class="total-score">Score: {alt.total_score.toFixed(2)}</span>
+                </div>
+                <div class="alt-scores">
+                  <span>Capacity: {alt.scores.capacity_fit.toFixed(2)}</span>
+                  <span>Equipment: {alt.scores.equipment_match.toFixed(2)}</span>
+                  <span>Availability: {alt.scores.availability.toFixed(2)}</span>
+                  <span>Distance: {alt.scores.distance.toFixed(2)}</span>
+                </div>
+                <button
+                  class="btn-primary btn-sm"
+                  disabled={submitting}
+                  onclick={() => bookAlternativeRoom(alt)}
+                >
+                  Book This Room
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick={closeModal}>Cancel</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .page {
@@ -321,27 +400,127 @@
     background: #dee2e6;
   }
 
-  .alternatives-panel {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
+  .btn-sm {
+    padding: 0.35rem 0.9rem;
+    font-size: 0.82rem;
   }
 
-  .alternatives-panel h3 {
+  /* Modal */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal {
+    background: #fff;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: #e63946;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
+    line-height: 1;
+  }
+
+  .modal-body {
+    padding: 1.25rem;
+  }
+
+  .modal-body h4 {
     margin: 0 0 0.5rem;
     font-size: 1rem;
-    color: #856404;
+    color: #333;
   }
 
-  .alternatives-panel ul {
-    margin: 0;
-    padding-left: 1.25rem;
+  .modal-footer {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .conflict-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.25rem;
+  }
+
+  .conflict-list li {
+    padding: 0.5rem 0.75rem;
+    background: #fff3cd;
+    border-radius: 6px;
+    margin-bottom: 0.4rem;
     font-size: 0.88rem;
   }
 
-  .alternatives-panel li {
-    margin-bottom: 0.3rem;
+  .conflict-type {
+    font-weight: 600;
+    text-transform: capitalize;
+    margin-right: 0.5rem;
+    color: #856404;
+  }
+
+  .conflict-desc {
+    color: #555;
+  }
+
+  .alternatives {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .alt-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+
+  .alt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+  }
+
+  .total-score {
+    font-weight: 600;
+    color: #4361ee;
+    font-size: 0.88rem;
+  }
+
+  .alt-scores {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.78rem;
+    color: #666;
+    margin-bottom: 0.5rem;
   }
 </style>

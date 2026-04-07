@@ -88,9 +88,13 @@
           {/if}
         </button>
 
-        <span class="user-info">
+        <button
+          class="user-info-btn"
+          onclick={() => navigate('/account/security')}
+          title="Account Security"
+        >
           {$authStore.role.replace('_', ' ')}
-        </span>
+        </button>
 
         <button class="logout-btn" onclick={handleLogout}>
           Sign Out
@@ -211,10 +215,21 @@
     text-align: center;
   }
 
-  .user-info {
+  .user-info-btn {
     font-size: 0.8rem;
     opacity: 0.8;
     text-transform: capitalize;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .user-info-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .logout-btn {

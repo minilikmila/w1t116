@@ -21,6 +21,10 @@ let dataSyncChannel: BroadcastChannel | null = null;
 // Encryption hooks — set by encryptionService when encryption is enabled
 let encryptHook: ((data: unknown, userId: string) => Promise<unknown>) | null = null;
 let decryptHook: ((data: unknown, userId: string) => Promise<unknown>) | null = null;
+let activeEncryptionUserId: string | null = null;
+
+// Stores excluded from automatic encryption (needed to bootstrap auth)
+const ENCRYPTION_EXCLUDED_STORES = new Set(['users', 'configuration', 'feature_flags', 'scheduler_tasks']);
 
 function isEncryptionEnabled(userId: string): boolean {
   try {
@@ -279,28 +283,53 @@ async function init(): Promise<void> {
 function setEncryptionHooks(
   encrypt: (data: unknown, userId: string) => Promise<unknown>,
   decrypt: (data: unknown, userId: string) => Promise<unknown>,
+  userId?: string,
 ): void {
   encryptHook = encrypt;
   decryptHook = decrypt;
+  if (userId) {
+    activeEncryptionUserId = userId;
+  }
 }
 
 function clearEncryptionHooks(): void {
   encryptHook = null;
   decryptHook = null;
+  activeEncryptionUserId = null;
 }
 
 // ============================================================
 // Internal Helpers
 // ============================================================
 
-async function maybeEncrypt(record: Record<string, unknown>, userId?: string): Promise<Record<string, unknown>> {
-  if (!encryptHook || !userId || !isEncryptionEnabled(userId)) return record;
-  return (await encryptHook(record, userId)) as Record<string, unknown>;
+async function maybeEncrypt(record: Record<string, unknown>, storeName?: string, userId?: string): Promise<Record<string, unknown>> {
+  const effectiveUserId = userId ?? activeEncryptionUserId;
+  if (!encryptHook || !effectiveUserId || !isEncryptionEnabled(effectiveUserId)) return record;
+  if (storeName && ENCRYPTION_EXCLUDED_STORES.has(storeName)) return record;
+
+  // Preserve keyPath and _version so IDB can index/store the record.
+  // Encrypt the remaining data payload as _encrypted.
+  const keyPath = storeName ? STORE_DEFINITIONS[storeName]?.keyPath : undefined;
+  const preserved: Record<string, unknown> = {};
+  if (keyPath && record[keyPath] !== undefined) preserved[keyPath] = record[keyPath];
+  if (record._version !== undefined) preserved._version = record._version;
+
+  const encrypted = await encryptHook(record, effectiveUserId);
+  return { ...preserved, _encrypted: encrypted };
 }
 
-async function maybeDecrypt(record: Record<string, unknown>, userId?: string): Promise<Record<string, unknown>> {
-  if (!decryptHook || !userId || !isEncryptionEnabled(userId)) return record;
-  return (await decryptHook(record, userId)) as Record<string, unknown>;
+async function maybeDecrypt(record: Record<string, unknown>, storeName?: string, userId?: string): Promise<Record<string, unknown>> {
+  const effectiveUserId = userId ?? activeEncryptionUserId;
+  if (!decryptHook || !effectiveUserId || !isEncryptionEnabled(effectiveUserId)) return record;
+  if (storeName && ENCRYPTION_EXCLUDED_STORES.has(storeName)) return record;
+
+  // If the record has the _encrypted wrapper, decrypt the payload
+  if (record._encrypted) {
+    return (await decryptHook(record._encrypted, effectiveUserId)) as Record<string, unknown>;
+  }
+
+  // Fallback: record may not be encrypted (written before encryption was enabled)
+  return record;
 }
 
 /**
@@ -359,7 +388,7 @@ async function get<T = Record<string, unknown>>(store: string, key: string, user
       }
 
       try {
-        const decrypted = await maybeDecrypt(record, userId);
+        const decrypted = await maybeDecrypt(record, store, userId);
         resolve(decrypted as T);
       } catch (err) {
         reject(err);
@@ -393,7 +422,7 @@ async function getAll<T = Record<string, unknown>>(
       }
 
       try {
-        const decrypted = await Promise.all(records.map((r) => maybeDecrypt(r, userId)));
+        const decrypted = await Promise.all(records.map((r) => maybeDecrypt(r, store, userId)));
         resolve(decrypted as T[]);
       } catch (err) {
         reject(err);
@@ -417,79 +446,70 @@ async function put(store: string, record: any, userId?: string): Promise<{ versi
   const recordKey = getKeyPathValue(record, keyPath);
   const isVersioned = VERSIONED_STORES.has(store);
 
-  return new Promise<{ version: number }>((resolve, reject) => {
-    const tx = database.transaction(store, 'readwrite');
-    const objectStore = tx.objectStore(store);
+  if (isVersioned) {
+    // Step 1: Read existing record for version check
+    const existing = await new Promise<any>((resolve, reject) => {
+      const tx = database.transaction(store, 'readonly');
+      const objectStore = tx.objectStore(store);
+      const request = objectStore.get(recordKey);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
 
-    // If versioned, do optimistic locking
-    if (isVersioned) {
-      const readRequest = objectStore.get(recordKey);
+    if (existing) {
+      const existingVersion = existing._version as number;
+      const expectedVersion = record._version as number;
 
-      readRequest.onsuccess = async () => {
-        const existing = readRequest.result;
+      if (expectedVersion !== undefined && expectedVersion !== existingVersion) {
+        throw new VersionConflictError(
+          `Version conflict on ${store}/${recordKey}: expected ${expectedVersion}, found ${existingVersion}`
+        );
+      }
 
-        if (existing) {
-          // Optimistic locking: compare versions
-          const existingVersion = existing._version as number;
-          const expectedVersion = record._version as number;
-
-          if (expectedVersion !== undefined && expectedVersion !== existingVersion) {
-            tx.abort();
-            reject(new VersionConflictError(
-              `Version conflict on ${store}/${recordKey}: expected ${expectedVersion}, found ${existingVersion}`
-            ));
-            return;
-          }
-
-          record._version = existingVersion + 1;
-        } else {
-          // New record
-          record._version = 1;
-        }
-
-        try {
-          const toWrite = await maybeEncrypt({ ...record }, userId);
-          const writeRequest = objectStore.put(toWrite);
-
-          writeRequest.onsuccess = () => {
-            broadcastChange('record-updated', store, recordKey, record._version as number, userId);
-            resolve({ version: record._version as number });
-          };
-
-          writeRequest.onerror = () => reject(writeRequest.error);
-        } catch (err) {
-          tx.abort();
-          reject(err);
-        }
-      };
-
-      readRequest.onerror = () => reject(readRequest.error);
+      record._version = existingVersion + 1;
     } else {
-      // Non-versioned store: direct put
-      (async () => {
-        try {
-          const toWrite = await maybeEncrypt({ ...record }, userId);
-          const writeRequest = objectStore.put(toWrite);
-
-          writeRequest.onsuccess = () => {
-            broadcastChange('record-updated', store, recordKey, undefined, userId);
-            resolve({ version: 0 });
-          };
-
-          writeRequest.onerror = () => reject(writeRequest.error);
-        } catch (err) {
-          tx.abort();
-          reject(err);
-        }
-      })();
+      record._version = 1;
     }
 
-    tx.onerror = () => {
-      if (tx.error?.name !== 'AbortError') {
-        reject(tx.error);
-      }
-    };
-  });
+    // Step 2: Encrypt BEFORE opening the write transaction
+    const toWrite = await maybeEncrypt({ ...record }, store, userId);
+
+    // Step 3: Write in a synchronous transaction
+    return new Promise<{ version: number }>((resolve, reject) => {
+      const tx = database.transaction(store, 'readwrite');
+      const objectStore = tx.objectStore(store);
+      const writeRequest = objectStore.put(toWrite);
+
+      writeRequest.onsuccess = () => {
+        broadcastChange('record-updated', store, recordKey, record._version as number, userId);
+        resolve({ version: record._version as number });
+      };
+
+      writeRequest.onerror = () => reject(writeRequest.error);
+      tx.onerror = () => {
+        if (tx.error?.name !== 'AbortError') reject(tx.error);
+      };
+    });
+  } else {
+    // Non-versioned store: encrypt then write
+    const toWrite = await maybeEncrypt({ ...record }, store, userId);
+
+    return new Promise<{ version: number }>((resolve, reject) => {
+      const tx = database.transaction(store, 'readwrite');
+      const objectStore = tx.objectStore(store);
+      const writeRequest = objectStore.put(toWrite);
+
+      writeRequest.onsuccess = () => {
+        broadcastChange('record-updated', store, recordKey, undefined, userId);
+        resolve({ version: 0 });
+      };
+
+      writeRequest.onerror = () => reject(writeRequest.error);
+      tx.onerror = () => {
+        if (tx.error?.name !== 'AbortError') reject(tx.error);
+      };
+    });
+  }
 }
 
 async function del(store: string, key: string, userId?: string): Promise<void> {
@@ -639,6 +659,16 @@ export interface TransactionHelpers {
 }
 
 // ============================================================
+// Helpers exposed for password-change re-encryption
+// ============================================================
+
+function getEncryptedStoreNames(): string[] {
+  return Object.keys(STORE_DEFINITIONS).filter(
+    (name) => !ENCRYPTION_EXCLUDED_STORES.has(name),
+  );
+}
+
+// ============================================================
 // Exported API
 // ============================================================
 
@@ -652,6 +682,7 @@ export const idbAccessLayer = {
   setEncryptionHooks,
   clearEncryptionHooks,
   getDb,
+  getEncryptedStoreNames,
 };
 
 export default idbAccessLayer;

@@ -19,6 +19,28 @@ function compareBuffers(a: ArrayBuffer, b: ArrayBuffer): boolean {
   return true;
 }
 
+async function activateEncryptionHooks(
+  password: string,
+  salt: Uint8Array,
+  userId: string,
+): Promise<void> {
+  const encKey = await encryptionService.deriveKey(password, salt);
+  idbAccessLayer.setEncryptionHooks(
+    async (data: unknown, _uid: string) => {
+      const { ciphertext, iv } = await encryptionService.encrypt(encKey, data);
+      return { ciphertext, iv };
+    },
+    async (data: unknown, _uid: string) => {
+      const record = data as { ciphertext: ArrayBuffer; iv: Uint8Array };
+      if (record.ciphertext && record.iv) {
+        return encryptionService.decrypt(encKey, record.ciphertext, new Uint8Array(record.iv));
+      }
+      return data;
+    },
+    userId,
+  );
+}
+
 // ============================================================
 // 1. login
 // ============================================================
@@ -67,23 +89,7 @@ async function login(username: string, password: string): Promise<Session> {
 
   // Wire encryption hooks if encryption is enabled for this user
   if (user.encryption_enabled && user.encryption_salt) {
-    const encKey = await encryptionService.deriveKey(
-      password,
-      new Uint8Array(user.encryption_salt),
-    );
-    idbAccessLayer.setEncryptionHooks(
-      async (data: unknown, _userId: string) => {
-        const { ciphertext, iv } = await encryptionService.encrypt(encKey, data);
-        return { ciphertext, iv };
-      },
-      async (data: unknown, _userId: string) => {
-        const record = data as { ciphertext: ArrayBuffer; iv: Uint8Array };
-        if (record.ciphertext && record.iv) {
-          return encryptionService.decrypt(encKey, record.ciphertext, new Uint8Array(record.iv));
-        }
-        return data;
-      },
-    );
+    await activateEncryptionHooks(password, new Uint8Array(user.encryption_salt), user.user_id);
   }
 
   // Build session
@@ -134,6 +140,14 @@ function restoreSession(): Session | null {
           const parsed: Session = JSON.parse(raw);
           if (parsed.expires_at > Date.now()) {
             authStore.set(parsed);
+
+            // If encryption was enabled, hooks cannot be rebuilt without
+            // the password. The session is restored for unencrypted access,
+            // but encrypted stores require a fresh login to derive the key.
+            if (isEncryptionEnabledForUser(parsed.user_id)) {
+              parsed.encryptionRequiresRelogin = true;
+            }
+
             return parsed;
           }
           // Stale — remove
@@ -145,6 +159,14 @@ function restoreSession(): Session | null {
     // localStorage may be unavailable
   }
   return null;
+}
+
+function isEncryptionEnabledForUser(userId: string): boolean {
+  try {
+    return localStorage.getItem(`encryption_enabled_${userId}`) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 // ============================================================
@@ -175,28 +197,52 @@ async function changePassword(
   const newSalt = encryptionService.generateSalt();
   const newHash = await encryptionService.hashPassword(newPassword, newSalt);
 
-  // Re-encrypt if encryption is enabled
-  if (user.encryption_enabled) {
-    await encryptionService.reEncryptAll(
-      userId,
-      oldPassword,
-      newPassword,
-      async () => {
-        // Gather all encrypted records for this user — include user record itself
-        const allStores = ['users'];
-        const records: Array<{ store: string; record: Record<string, unknown> }> = [];
-        const currentUser = await idbAccessLayer.get('users', userId);
-        if (currentUser) {
-          records.push({ store: 'users', record: currentUser as unknown as Record<string, unknown> });
+  // Re-encrypt all encrypted stores if encryption is enabled
+  if (user.encryption_enabled && user.encryption_salt) {
+    const migrationFlag = `encryption_migration_${userId}`;
+    localStorage.setItem(migrationFlag, 'true');
+
+    try {
+      // Step 1: Read only user-owned records from encrypted stores while old-key hooks are active
+      const encryptedStores = idbAccessLayer.getEncryptedStoreNames();
+      const allRecords: Array<{ store: string; records: Record<string, unknown>[] }> = [];
+
+      for (const storeName of encryptedStores) {
+        const records = await idbAccessLayer.getAll<Record<string, unknown>>(
+          storeName, undefined, undefined, userId,
+        );
+        if (records.length > 0) {
+          allRecords.push({ store: storeName, records });
         }
-        return records;
-      },
-      async (records) => {
-        for (const { store, record } of records) {
+      }
+
+      // Step 2: Derive new encryption key and switch hooks
+      const newEncSalt = encryptionService.generateSalt();
+      await activateEncryptionHooks(newPassword, newEncSalt, userId);
+      localStorage.setItem(`encryption_enabled_${userId}`, 'true');
+
+      // Step 3: Write all records back — auto-encrypts with new key
+      for (const { store, records } of allRecords) {
+        for (const record of records) {
           await idbAccessLayer.put(store, record);
         }
       }
-    );
+
+      // Step 4: Update user record with new encryption salt
+      const reEncUser: User | undefined = await idbAccessLayer.get('users', userId);
+      if (reEncUser) {
+        const updatedEncUser: User = {
+          ...reEncUser,
+          encryption_salt: newEncSalt.buffer as ArrayBuffer,
+        };
+        await idbAccessLayer.put('users', updatedEncUser);
+      }
+
+      localStorage.removeItem(migrationFlag);
+    } catch (err) {
+      localStorage.removeItem(migrationFlag);
+      throw err;
+    }
   }
 
   // Update user record
@@ -294,22 +340,9 @@ async function enableEncryption(userId: string, password: string): Promise<void>
 
   // Generate encryption salt and derive key
   const encSalt = encryptionService.generateSalt();
-  const encKey = await encryptionService.deriveKey(password, encSalt);
 
   // Register hooks
-  idbAccessLayer.setEncryptionHooks(
-    async (data: unknown, _userId: string) => {
-      const { ciphertext, iv } = await encryptionService.encrypt(encKey, data);
-      return { ciphertext, iv };
-    },
-    async (data: unknown, _userId: string) => {
-      const record = data as { ciphertext: ArrayBuffer; iv: Uint8Array };
-      if (record.ciphertext && record.iv) {
-        return encryptionService.decrypt(encKey, record.ciphertext, new Uint8Array(record.iv));
-      }
-      return data;
-    },
-  );
+  await activateEncryptionHooks(password, encSalt, userId);
 
   // Persist encryption state
   localStorage.setItem(`encryption_enabled_${userId}`, 'true');

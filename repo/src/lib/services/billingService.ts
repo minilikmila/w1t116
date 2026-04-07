@@ -13,10 +13,11 @@ interface GenerationResult {
   skipped: number;
 }
 
-async function generateMonthlyBills(): Promise<GenerationResult> {
-  // RBAC — allow SYSTEM_ADMIN / OPS_COORDINATOR
-  rbacService.checkRole(['SYSTEM_ADMIN', 'OPS_COORDINATOR']);
-
+/**
+ * Scheduler-safe billing generation — no RBAC check.
+ * Called by the scheduler handler and by the RBAC-gated public wrapper.
+ */
+async function generateMonthlyBillsInternal(): Promise<GenerationResult> {
   // Read configuration values up-front (async, outside transaction)
   const housingFeeRaw = await opsConfigService.getPolicy('housing_fee');
   const defaultHousingFee = typeof housingFeeRaw === 'number' ? housingFeeRaw : 950;
@@ -137,6 +138,14 @@ async function generateMonthlyBills(): Promise<GenerationResult> {
   }
 
   return { bills, created: bills.length, skipped };
+}
+
+/**
+ * User-triggered monthly billing — enforces RBAC before delegating.
+ */
+async function generateMonthlyBills(): Promise<GenerationResult> {
+  rbacService.checkRole(['SYSTEM_ADMIN', 'OPS_COORDINATOR']);
+  return generateMonthlyBillsInternal();
 }
 
 // ============================================================
@@ -325,6 +334,7 @@ async function getPaymentsForBill(billId: string): Promise<Payment[]> {
 
 export const billingService = {
   generateMonthlyBills,
+  generateMonthlyBillsScheduled: generateMonthlyBillsInternal,
   recordPayment,
   markOverdueBills,
   exportReconciliationCSV,

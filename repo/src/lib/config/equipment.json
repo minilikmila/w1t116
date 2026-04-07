@@ -1,0 +1,135 @@
+[
+  {
+    "equipment_id": "eq-proj-b1f1-101",
+    "room_id": "room-101",
+    "equipment_type": "projector",
+    "name": "Projector (Lecture Hall A)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-wb-b1f1-101",
+    "room_id": "room-101",
+    "equipment_type": "whiteboard",
+    "name": "Whiteboard (Lecture Hall A)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-mic-b1f1-101",
+    "room_id": "room-101",
+    "equipment_type": "microphone",
+    "name": "Microphone (Lecture Hall A)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-proj-b1f1-102",
+    "room_id": "room-102",
+    "equipment_type": "projector",
+    "name": "Projector (Lecture Hall B)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-wb-b1f1-102",
+    "room_id": "room-102",
+    "equipment_type": "whiteboard",
+    "name": "Whiteboard (Lecture Hall B)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-proj-b1f2-201",
+    "room_id": "room-201",
+    "equipment_type": "projector",
+    "name": "Projector (Computer Lab 1)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-comp-b1f2-201",
+    "room_id": "room-201",
+    "equipment_type": "computers",
+    "name": "Computer Stations (Computer Lab 1)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-wb-b1f2-201",
+    "room_id": "room-201",
+    "equipment_type": "whiteboard",
+    "name": "Whiteboard (Computer Lab 1)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-labkit-b2f1-301",
+    "room_id": "room-301",
+    "equipment_type": "lab_kits",
+    "name": "Lab Kits (Science Lab)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-proj-b2f1-301",
+    "room_id": "room-301",
+    "equipment_type": "projector",
+    "name": "Projector (Science Lab)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-fume-b2f1-301",
+    "room_id": "room-301",
+    "equipment_type": "fume_hood",
+    "name": "Fume Hood (Science Lab)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-proj-b2f1-302",
+    "room_id": "room-302",
+    "equipment_type": "projector",
+    "name": "Projector (Seminar Room 1)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-wb-b2f1-302",
+    "room_id": "room-302",
+    "equipment_type": "whiteboard",
+    "name": "Whiteboard (Seminar Room 1)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-vc-b2f1-302",
+    "room_id": "room-302",
+    "equipment_type": "video_conference",
+    "name": "Video Conference System (Seminar Room 1)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-proj-b2f2-401",
+    "room_id": "room-401",
+    "equipment_type": "projector",
+    "name": "Projector (Workshop Space)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-bench-b2f2-401",
+    "room_id": "room-401",
+    "equipment_type": "workbenches",
+    "name": "Workbenches (Workshop Space)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-tools-b2f2-401",
+    "room_id": "room-401",
+    "equipment_type": "tool_stations",
+    "name": "Tool Stations (Workshop Space)",
+    "is_exclusive": true
+  },
+  {
+    "equipment_id": "eq-wb-b2f2-402",
+    "room_id": "room-402",
+    "equipment_type": "whiteboard",
+    "name": "Whiteboard (Small Meeting Room)",
+    "is_exclusive": false
+  },
+  {
+    "equipment_id": "eq-vc-b2f2-402",
+    "room_id": "room-402",
+    "equipment_type": "video_conference",
+    "name": "Video Conference System (Small Meeting Room)",
+    "is_exclusive": true
+  }
+]

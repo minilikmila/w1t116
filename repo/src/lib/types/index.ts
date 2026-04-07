@@ -15,6 +15,7 @@ export interface Session {
   org_unit: string;
   token: string;
   expires_at: number;
+  encryptionRequiresRelogin?: boolean;
 }
 
 // ============================================================

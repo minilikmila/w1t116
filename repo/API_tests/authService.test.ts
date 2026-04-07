@@ -12,6 +12,7 @@ const mockIdb = {
   get: vi.fn(),
   setEncryptionHooks: vi.fn(),
   clearEncryptionHooks: vi.fn(),
+  getEncryptedStoreNames: vi.fn(() => ['bookings', 'sessions', 'registrations', 'messages']),
 };
 
 vi.mock('../src/lib/services/idbAccessLayer', () => ({

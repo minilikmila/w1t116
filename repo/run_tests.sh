@@ -84,6 +84,14 @@ run_suite "Integration — Session Booking Orchestration" "integration_tests/ses
 run_suite "Integration — Message Scheduling" "integration_tests/messageScheduling.test.ts"
 run_suite "Integration — Message Access Control" "integration_tests/messageAccessControl.test.ts"
 run_suite "Integration — Encryption Wiring" "integration_tests/encryptionWiring.test.ts"
+run_suite "Integration — Encryption Storage Boundary" "integration_tests/encryptionStorageBoundary.test.ts"
+
+# ----------------------------------------------------------
+# 4. Component / Route Render Tests
+# ----------------------------------------------------------
+
+run_suite "Component — Session Create Conflict Modal" "component_tests/SessionCreateConflictModal.test.ts"
+run_suite "Component — Message Detail Access" "component_tests/MessageDetailAccess.test.ts"
 
 # ----------------------------------------------------------
 # Summary
