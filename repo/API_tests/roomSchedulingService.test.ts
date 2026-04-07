@@ -301,6 +301,137 @@ describe('roomSchedulingService', () => {
   });
 
   // ----------------------------------------------------------
+  // updateSessionBooking
+  // ----------------------------------------------------------
+
+  describe('updateSessionBooking', () => {
+    function seedSessionWithBooking(instructorId: string) {
+      mockIdb._seed('rooms', [{
+        room_id: 'room-1',
+        name: 'Room 1',
+        building_code: 'B1',
+        floor_code: 'F1',
+        capacity: 30,
+        equipment: ['projector'],
+        _version: 1,
+      }]);
+
+      mockIdb._seed('bookings', [{
+        booking_id: 'booking-1',
+        room_id: 'room-1',
+        user_id: instructorId,
+        start_time: Date.now() + 3600_000,
+        end_time: Date.now() + 7200_000,
+        requested_equipment: [],
+        participant_capacity: 20,
+        status: 'confirmed',
+        created_at: Date.now(),
+        _version: 1,
+      }]);
+
+      mockIdb._seed('sessions', [{
+        session_id: 'session-1',
+        instructor_id: instructorId,
+        room_id: 'room-1',
+        booking_id: 'booking-1',
+        title: 'Original Title',
+        start_time: Date.now() + 3600_000,
+        end_time: Date.now() + 7200_000,
+        capacity: 20,
+        current_enrollment: 5,
+        status: 'active',
+        fee: 10,
+        _version: 1,
+      }]);
+    }
+
+    it('updates session title and capacity without version conflict', async () => {
+      const session = loginAs('INSTRUCTOR');
+      seedSessionWithBooking(session.user_id);
+
+      const updated = await roomSchedulingService.updateSessionBooking('session-1', {
+        title: 'Updated Title',
+        capacity: 25,
+      });
+
+      expect(updated.title).toBe('Updated Title');
+      expect(updated.capacity).toBe(25);
+      expect(mockIdb.put).toHaveBeenCalledWith('sessions', expect.objectContaining({
+        session_id: 'session-1',
+        title: 'Updated Title',
+        capacity: 25,
+      }));
+    });
+
+    it('updates session fee', async () => {
+      const session = loginAs('INSTRUCTOR');
+      seedSessionWithBooking(session.user_id);
+
+      const updated = await roomSchedulingService.updateSessionBooking('session-1', {
+        fee: 25.50,
+      });
+
+      expect(updated.fee).toBe(25.50);
+    });
+
+    it('allows SYSTEM_ADMIN to edit any session', async () => {
+      loginAs('SYSTEM_ADMIN');
+      seedSessionWithBooking('other-instructor');
+
+      const updated = await roomSchedulingService.updateSessionBooking('session-1', {
+        title: 'Admin Updated',
+      });
+
+      expect(updated.title).toBe('Admin Updated');
+    });
+
+    it('allows OPS_COORDINATOR to edit any session', async () => {
+      loginAs('OPS_COORDINATOR');
+      seedSessionWithBooking('other-instructor');
+
+      const updated = await roomSchedulingService.updateSessionBooking('session-1', {
+        title: 'Ops Updated',
+      });
+
+      expect(updated.title).toBe('Ops Updated');
+    });
+
+    it('rejects edit from non-owner INSTRUCTOR', async () => {
+      loginAs('INSTRUCTOR');
+      seedSessionWithBooking('other-instructor');
+
+      await expect(
+        roomSchedulingService.updateSessionBooking('session-1', { title: 'Hacked' }),
+      ).rejects.toThrow('permission');
+    });
+
+    it('rejects edit for nonexistent session', async () => {
+      loginAs('INSTRUCTOR');
+
+      await expect(
+        roomSchedulingService.updateSessionBooking('nonexistent', { title: 'Nope' }),
+      ).rejects.toThrow('not found');
+    });
+
+    it('preserves version from existing session for optimistic locking', async () => {
+      const session = loginAs('INSTRUCTOR');
+      seedSessionWithBooking(session.user_id);
+
+      await roomSchedulingService.updateSessionBooking('session-1', {
+        title: 'Version Check',
+      });
+
+      // The put call should pass through the existing _version (not incremented)
+      // so that idbAccessLayer.put can do its own optimistic locking
+      const putCall = mockIdb.put.mock.calls.find(
+        (c: any[]) => c[0] === 'sessions',
+      );
+      expect(putCall).toBeDefined();
+      expect(putCall![1]._version).toBe(1);
+    });
+  });
+
+  // ----------------------------------------------------------
   // getAllBookings
   // ----------------------------------------------------------
 

@@ -77,6 +77,15 @@ run_suite "API Tests — Message Center Service" "API_tests/messageCenterService
 run_suite "API Tests — Feature Flag Service" "API_tests/featureFlagService.test.ts"
 
 # ----------------------------------------------------------
+# 3. Integration Tests
+# ----------------------------------------------------------
+
+run_suite "Integration — Session Booking Orchestration" "integration_tests/sessionBookingOrchestration.test.ts"
+run_suite "Integration — Message Scheduling" "integration_tests/messageScheduling.test.ts"
+run_suite "Integration — Message Access Control" "integration_tests/messageAccessControl.test.ts"
+run_suite "Integration — Encryption Wiring" "integration_tests/encryptionWiring.test.ts"
+
+# ----------------------------------------------------------
 # Summary
 # ----------------------------------------------------------
 

@@ -467,7 +467,7 @@ async function updateSessionBooking(
     end_time: updates.end_time ?? existingSession.end_time,
     capacity: updates.capacity ?? existingSession.capacity,
     fee: updates.fee ?? existingSession.fee,
-    _version: existingSession._version + 1,
+    _version: existingSession._version,
   };
 
   await idbAccessLayer.put('sessions', updatedSession);
