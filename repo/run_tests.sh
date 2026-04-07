@@ -15,6 +15,9 @@ if [ -s "$HOME/.nvm/nvm.sh" ]; then
   nvm use 20 --silent 2>/dev/null || true
 fi
 
+# Install dependencies
+npm ci
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
