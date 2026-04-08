@@ -12,13 +12,14 @@ cd "$SCRIPT_DIR"
 # If already inside the container, run tests directly
 # -------------------------------------------------------
 if [ "${INSIDE_DOCKER:-}" = "true" ]; then
-  ]="node_modules/.package-lock.sha256"
+  LOCKFILE_HASH_FILE="node_modules/.package-lock.sha256"
   CURRENT_LOCKFILE_HASH="$(sha256sum package-lock.json | awk '{print $1}')"
   CACHED_LOCKFILE_HASH="$(cat "$LOCKFILE_HASH_FILE" 2>/dev/null || true)"
 
   # Reinstall only when the dependency volume is empty or the lockfile changed.
   if [ ! -d node_modules ] || [ ! -f node_modules/.package-lock.json ] || [ "$CURRENT_LOCKFILE_HASH" != "$CACHED_LOCKFILE_HASH" ]; then
     npm ci
+    mkdir -p "$(dirname "$LOCKFILE_HASH_FILE")"
     printf '%s\n' "$CURRENT_LOCKFILE_HASH" > "$LOCKFILE_HASH_FILE"
   fi
 
@@ -130,6 +131,10 @@ fi
 
 echo "Using: $DC"
 echo "Running tests in Docker container..."
+
+# Build first so the container always includes the current source tree
+# and dependency state from package-lock.json.
+COMPOSE_PROFILES=test $DC build test
 
 # Run the test service from compose file.
 # --rm: clean up container after exit
